@@ -65,7 +65,7 @@ top_retry:;
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
-            if (!NODE_VALIDATE(curr, curr_v))
+            if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
                 goto top_retry;
 
             curr = next;
@@ -80,7 +80,7 @@ top_retry:;
 
         hocc64_t child_v = NODE_LOAD_VERSION(child);
 
-        if (!NODE_VALIDATE(curr, curr_v))
+        if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
             goto top_retry;
         
         curr = child;
@@ -90,7 +90,7 @@ top_retry:;
     assert(level == level_to_promote);
 
     NODE_WRITE_LOCK(curr);
-    if (!NODE_VALIDATE(curr, curr_v))
+    if (!NODE_VALIDATE(curr, curr_v + HOCC_WRITER_BIT))
     {
         NODE_WRITE_UNLOCK(curr);
         goto top_retry;
