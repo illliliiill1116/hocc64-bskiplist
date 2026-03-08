@@ -52,7 +52,7 @@ static inline hocc64_t hocc_load(hocc64_t *ptr)
 static inline int hocc_validate(hocc64_t *ptr, hocc64_t old_v)
 {
     hocc64_t curr_v = __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
-    /* Fails if version counter changed */
+    /* Fails if version counter changed or writer bit is set */
     return !((curr_v ^ old_v) & (HOCC_VERSION_MASK | HOCC_WRITER_BIT));
 }
 
@@ -122,7 +122,8 @@ static inline void hocc_write_lock(hocc64_t *ptr)
     }
 
     /* Wait for all readers to finish */
-    while (__atomic_load_n(ptr, __ATOMIC_ACQUIRE) & HOCC_READER_MASK) cpu_relax();
+    while (__atomic_load_n(ptr, __ATOMIC_RELAXED) & HOCC_READER_MASK) cpu_relax();
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
 }
 
 
@@ -144,7 +145,8 @@ static inline void hocc_write_lock_evicting(hocc64_t *ptr)
     }
     
     /* Wait for all readers to finish */ 
-    while (__atomic_load_n(ptr, __ATOMIC_ACQUIRE) & HOCC_READER_MASK) cpu_relax();
+    while (__atomic_load_n(ptr, __ATOMIC_RELAXED) & HOCC_READER_MASK) cpu_relax();
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
 }
 
 
