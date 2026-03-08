@@ -63,7 +63,7 @@ top_retry:;
     return -1;
 }
 
-int bsl_get_value(bsl_t *list, bsl_key_t key, bsl_val_t *out_val)
+int bsl_get(bsl_t *list, bsl_key_t key, bsl_val_t *out_val)
 {
     epoch_enter();
     int ret = _bsl_get_value(list, key, out_val);

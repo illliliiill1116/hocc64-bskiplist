@@ -127,12 +127,12 @@ void *worker(void *arg) {
                 break;
             case OP_READ: {
                 bsl_val_t out;
-                bsl_get_value(a->list, (bsl_key_t)a->wl->keys[i], &out);
+                bsl_get(a->list, (bsl_key_t)a->wl->keys[i], &out);
                 break;
             }
             case OP_SCAN: {
                 uint64_t dummy_sum = 0;
-                bsl_limit_scan_chunked(a->list, a->wl->keys[i], (size_t)a->wl->ranges_end[i], scan_chunk_cb, &dummy_sum);
+                bsl_limit_scan_batch(a->list, a->wl->keys[i], (size_t)a->wl->ranges_end[i], scan_chunk_cb, &dummy_sum);
                 break;
             }
             default: continue;

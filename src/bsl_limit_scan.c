@@ -122,7 +122,7 @@ void bsl_limit_scan(bsl_t *list, bsl_key_t start, size_t limit, range_cb cb, voi
 }
 
 static inline void 
-_bsl_limit_scan_chunked(bsl_t *list, bsl_key_t start, size_t limit, range_chunk_cb cb, void *arg)
+_bsl_limit_scan_batch(bsl_t *list, bsl_key_t start, size_t limit, range_batch_cb cb, void *arg)
 {
     if (unlikely(limit <= 0)) return;
 
@@ -221,9 +221,9 @@ top_retry:;
     }
 }
 
-void bsl_limit_scan_chunked(bsl_t *list, bsl_key_t start, size_t limit, range_chunk_cb cb, void *arg)
+void bsl_limit_scan_batch(bsl_t *list, bsl_key_t start, size_t limit, range_batch_cb cb, void *arg)
 {
     epoch_enter();
-    _bsl_limit_scan_chunked(list, start, limit, cb, arg);
+    _bsl_limit_scan_batch(list, start, limit, cb, arg);
     epoch_exit();
 }

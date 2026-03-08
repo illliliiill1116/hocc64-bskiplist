@@ -46,15 +46,15 @@ void* mixer_worker(void* arg) {
             bsl_insert(list, key, key + 100);
         } 
         else if (prob < (RATIO_INSERT + RATIO_DELETE)) {
-            bsl_delete(list, key);
+            bsl_remove(list, key);
         } 
         else if (prob < (RATIO_INSERT + RATIO_DELETE + RATIO_GET)) {
             bsl_val_t val;
-            bsl_get_value(list, key, &val);
+            bsl_get(list, key, &val);
         } 
         else {
             bsl_val_t sum = 0;
-            bsl_limit_scan_chunked(list, key, SCAN_LIMIT, scan_chunk_cb, &sum);
+            bsl_limit_scan_batch(list, key, SCAN_LIMIT, scan_chunk_cb, &sum);
         }
     }
     return NULL;

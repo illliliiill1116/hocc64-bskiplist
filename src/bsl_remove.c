@@ -42,7 +42,7 @@ static inline void delete_leaf_slot(void *node, int rank)
 }
 
 
-static inline int _bsl_delete(bsl_t *list, bsl_key_t key)
+static inline int _bsl_remove(bsl_t *list, bsl_key_t key)
 {
     if (key <= BSL_KEY_MIN || key >= BSL_KEY_MAX)
         return -1;
@@ -234,10 +234,10 @@ top_retry:;
     return 1;
 }
 
-int bsl_delete(bsl_t *list, bsl_key_t key)
+int bsl_remove(bsl_t *list, bsl_key_t key)
 {
     epoch_enter();
-    int ret = _bsl_delete(list, key);
+    int ret = _bsl_remove(list, key);
     epoch_exit();
     return ret;
 }

@@ -9,9 +9,6 @@ bsl_t* bsl_new()
 
     if (!list) return NULL;
 
-    list->count = 0;
-    list->current_max_level = 0;
-
     leaf_node_t *leaf_sentinel = (leaf_node_t*)bsl_alloc_node();
 
     if (!leaf_sentinel)
