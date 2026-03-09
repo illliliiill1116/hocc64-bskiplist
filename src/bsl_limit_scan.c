@@ -199,7 +199,7 @@ top_retry:;
             cb(range, arg);
             found_count += batch_size;
             
-            current_start = leaf->keys[i + batch_size - 1] + 1;
+            current_start = LOAD_RELAXED(leaf->keys[i + batch_size - 1]) + 1;
         }
 
 

@@ -18,7 +18,7 @@ top_retry:;
         while (LOAD_RELAXED(curr->next_header) <= key)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
-            if (!next) break; 
+            if (!next) break;
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
             if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
@@ -28,15 +28,15 @@ top_retry:;
             curr_v = next_v;
         }
 
-        int num = __atomic_load_n(&curr->num_elts, __ATOMIC_RELAXED);
+        int num = LOAD_RELAXED(curr->num_elts);
         bsl_key_t *keys = NODE_KEYS(curr);
         int rank = find_rank(keys, num, key);
 
         if (i == 0) /* Leaf level */
         {
-            if (num > 0 && __atomic_load_n(&keys[rank], __ATOMIC_RELAXED) == key)
+            if (num > 0 && LOAD_RELAXED(keys[rank]) == key)
             {
-                bsl_val_t v = __atomic_load_n(&LEAF_VALUES(curr)[rank], __ATOMIC_RELAXED);
+                bsl_val_t v = LOAD_RELAXED(LEAF_VALUES(curr)[rank]);
 
                 if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
                     goto top_retry;
@@ -49,7 +49,7 @@ top_retry:;
         else /* Internal level: drop down */
         {
             void **children = INTERNAL_CHILDREN(curr);
-            node_header_t *child = (node_header_t *)__atomic_load_n(&children[rank], __ATOMIC_RELAXED);
+            node_header_t *child = (node_header_t *)LOAD_RELAXED(children[rank]);
             if (!child) goto top_retry;
           
             hocc64_t child_v = NODE_LOAD_VERSION(child);

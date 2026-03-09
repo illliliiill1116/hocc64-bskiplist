@@ -28,7 +28,7 @@ void scan_chunk_cb(bsl_range_t range, void *arg) {
     uint64_t *sum = (uint64_t *)arg;
     
     for (size_t i = 0; i < range.count; i++) {
-        *sum += range.vals[i];
+        *sum += __atomic_load_n(&range.vals[i], __ATOMIC_RELAXED);
     }
 }
 

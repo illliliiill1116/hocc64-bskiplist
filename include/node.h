@@ -2,8 +2,9 @@
 #define BSL_NODE_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include "params.h"
-#include "atomic_util.h"
+#include "util.h"
 #include "hocc64.h"
 
 typedef struct {
@@ -12,7 +13,8 @@ typedef struct {
     bsl_key_t next_header;
     uint16_t num_elts;
     uint8_t level;
-} node_header_t;
+} __attribute__((aligned(CACHE_LINE_SIZE))) node_header_t;
+STATIC_ASSERT(sizeof(node_header_t) == CACHE_LINE_SIZE);
 
 #define NODE_HEADER_SIZE (sizeof(node_header_t))
 #define B_INTERNAL ((NODE_SIZE - NODE_HEADER_SIZE) / (sizeof(bsl_key_t) + sizeof(void*)))
@@ -29,6 +31,9 @@ typedef struct leaf_node {
     bsl_key_t keys[B_LEAF];
     bsl_val_t values[B_LEAF];
 } leaf_node_t;
+
+#define LEAF_VALUES_OFFSET       (offsetof(leaf_node_t, values))
+#define INTERNAL_CHILDREN_OFFSET (offsetof(internal_node_t, children))
 
 #define NODE_KEYS(n)            ((bsl_key_t *)((node_header_t *)(n) + 1))
 #define INTERNAL_CHILDREN(n)    (((internal_node_t *)(n))->children)

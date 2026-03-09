@@ -146,7 +146,7 @@ top_retry:;
             
             NODE_WRITE_UNLOCK(curr);
             
-            while (child->level > 0)
+            while (LOAD_RELAXED(child->level) > 0)
             {
                 node_header_t *next_child = (node_header_t *)INTERNAL_CHILDREN(child)[0];
                 if (next_child == NULL)

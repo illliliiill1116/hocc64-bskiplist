@@ -1,5 +1,6 @@
 #include "epoch.h"
-#include "atomic_util.h"
+#include "util.h"
+#include "node.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,7 +40,7 @@ void epoch_exit()
 void* bsl_alloc_node()
 {
     void* ptr;
-    if (posix_memalign(&ptr, 64, NODE_SIZE) != 0) return NULL;
+    if (posix_memalign(&ptr, CACHE_LINE_SIZE, NODE_SIZE) != 0) return NULL;
     memset(ptr, 0, NODE_SIZE);
     return ptr;
 }
@@ -48,7 +49,7 @@ void bsl_free_node(void* ptr)
 {
     if (!ptr) return;
     
-    void** next_slot = (void**)((char*)ptr + CACHE_LINE_SIZE);
+    void** next_slot = (void**)((char*)ptr + NODE_GC_NEXT_OFFSET);
     *next_slot = my_ctx->pending_gc[my_ctx->local_epoch % EPOCH_COUNT];
     my_ctx->pending_gc[my_ctx->local_epoch % EPOCH_COUNT] = ptr;
 }
@@ -78,7 +79,7 @@ void try_gc()
 
     while (to_reclaim)
     {
-        void* next = *(void**)((char*)to_reclaim + CACHE_LINE_SIZE);
+        void* next = *(void**)((char*)to_reclaim + NODE_GC_NEXT_OFFSET);
         free(to_reclaim);
         to_reclaim = next;
     }
