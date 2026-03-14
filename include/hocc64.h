@@ -108,7 +108,7 @@ static inline void hocc_read_unlock(hocc64_t *ptr)
 static inline void hocc_write_lock(hocc64_t *ptr)
 {
     hocc64_t v;
-    int backoff = 1;
+    int backoff = 64;
     while (1)
     {
         v = __atomic_load_n(ptr, __ATOMIC_RELAXED);
@@ -118,7 +118,7 @@ static inline void hocc_write_lock(hocc64_t *ptr)
             break;
 
         for (int i = 0; i < backoff; i++) cpu_relax();
-        backoff = (backoff < 64) ? backoff << 1 : 64;
+        backoff = (backoff < 1024) ? backoff << 1 : 1024;
     }
 
     /* Wait for all readers to finish */
@@ -130,7 +130,7 @@ static inline void hocc_write_lock(hocc64_t *ptr)
 static inline void hocc_write_lock_evicting(hocc64_t *ptr)
 {
     hocc64_t v;
-    int backoff = 1;
+    int backoff = 64;
     while (1)
     {
         v = __atomic_load_n(ptr, __ATOMIC_RELAXED);
@@ -141,7 +141,7 @@ static inline void hocc_write_lock_evicting(hocc64_t *ptr)
             break;
 
         for (int i = 0; i < backoff; i++) cpu_relax();
-        backoff = (backoff < 64) ? backoff << 1 : 64;
+        backoff = (backoff < 1024) ? backoff << 1 : 1024;
     }
     
     /* Wait for all readers to finish */ 

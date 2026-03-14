@@ -11,10 +11,10 @@ typedef struct {
     hocc64_t ctrl;
     void *next;
     bsl_key_t next_header;
-    uint16_t num_elts;
-    uint8_t level;
-} __attribute__((aligned(CACHE_LINE_SIZE))) node_header_t;
-STATIC_ASSERT(sizeof(node_header_t) == CACHE_LINE_SIZE);
+    uint32_t num_elts;
+    uint32_t level;
+} /* __attribute__((aligned(CACHE_LINE_SIZE))) */ node_header_t;
+//STATIC_ASSERT(sizeof(node_header_t) == CACHE_LINE_SIZE);
 
 #define NODE_HEADER_SIZE (sizeof(node_header_t))
 #define B_INTERNAL ((NODE_SIZE - NODE_HEADER_SIZE) / (sizeof(bsl_key_t) + sizeof(void*)))

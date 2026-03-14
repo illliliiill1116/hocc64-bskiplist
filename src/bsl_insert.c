@@ -30,8 +30,18 @@ static inline void insert_internal_slot(void *node, int rank, bsl_key_t key, voi
     bsl_key_t *keys = NODE_KEYS(node);
     void **children = INTERNAL_CHILDREN(node);
 
+    int move_cnt = h->num_elts - rank;
+
+    for (int j = h->num_elts; j > rank; j--)
+    {
+        STORE_RELAXED(keys[j], keys[j - 1]);
+        STORE_RELAXED(children[j], children[j - 1]);
+    }
+/*
     memmove(keys + rank + 1, keys + rank, (h->num_elts - rank) * sizeof(bsl_key_t));
     memmove(children + rank + 1, children + rank, (h->num_elts - rank) * sizeof(void *));
+*/
+
     STORE_RELAXED(keys[rank], key);
     STORE_RELAXED(children[rank], child);
 
@@ -43,8 +53,18 @@ static inline void insert_leaf_slot(void *node, int rank, bsl_key_t key, bsl_val
     bsl_key_t *keys = NODE_KEYS(node);
     bsl_val_t *values = LEAF_VALUES(node);
 
+    int move_cnt = h->num_elts - rank;
+
+    for (int j = h->num_elts; j > rank; j--)
+    {
+        STORE_RELAXED(keys[j], keys[j - 1]);
+        STORE_RELAXED(values[j], values[j - 1]);
+    }
+/*
     memmove(keys + rank + 1, keys + rank, (h->num_elts - rank) * sizeof(bsl_key_t));
     memmove(values + rank + 1, values + rank, (h->num_elts - rank) * sizeof(bsl_val_t));
+*/
+
     STORE_RELAXED(keys[rank], key);
     STORE_RELAXED(values[rank], value);
 
