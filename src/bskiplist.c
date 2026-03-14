@@ -60,7 +60,7 @@ void bsl_destroy(bsl_t *list)
         while (curr) 
         {
             node_header_t *next = (node_header_t *)curr->next;
-            bsl_free_node(curr);
+            free(curr);
             curr = next;
         }
     }
