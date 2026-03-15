@@ -5,7 +5,7 @@
 
 static inline int _bsl_get_value(bsl_t *list, bsl_key_t key, bsl_val_t *out_val)
 {
-    if (key <= BSL_KEY_MIN || key >= BSL_KEY_MAX) return -1;
+    if (key <= BSL_KEY_MIN || key >= BSL_KEY_MAX) return 0;
 
 top_retry:;
 
@@ -18,7 +18,7 @@ top_retry:;
         while (LOAD_RELAXED(curr->next_header) <= key)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
-            if (!next) break;
+            if (!next) goto top_retry;
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
             if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
@@ -37,14 +37,15 @@ top_retry:;
             if (num > 0 && LOAD_RELAXED(keys[rank]) == key)
             {
                 bsl_val_t v = LOAD_RELAXED(LEAF_VALUES(curr)[rank]);
-
+                
+                __atomic_thread_fence(__ATOMIC_ACQUIRE);
                 if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
                     goto top_retry;
 
                 if (out_val) *out_val = v;
-                return 0;
+                return 1;
             }
-            return -1;
+            return 0;
         } 
         else /* Internal level: drop down */
         {
@@ -60,7 +61,7 @@ top_retry:;
             curr_v = child_v;
         }
     }
-    return -1;
+    return 0;
 }
 
 int bsl_get(bsl_t *list, bsl_key_t key, bsl_val_t *out_val)

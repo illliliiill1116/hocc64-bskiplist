@@ -13,7 +13,7 @@ bsl_t* bsl_new();
 void bsl_destroy(bsl_t *list);
 
 int bsl_insert(bsl_t *list, bsl_key_t key, bsl_val_t value);
-int bsl_remove(bsl_t *list, bsl_key_t key);
+int bsl_delete(bsl_t *list, bsl_key_t key);
 int bsl_get(bsl_t *list, bsl_key_t key, bsl_val_t *out_val);
 
 typedef void (*range_cb)(bsl_key_t key, bsl_val_t val, void *arg);

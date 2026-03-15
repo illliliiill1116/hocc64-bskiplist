@@ -30,8 +30,6 @@ static inline void insert_internal_slot(void *node, int rank, bsl_key_t key, voi
     bsl_key_t *keys = NODE_KEYS(node);
     void **children = INTERNAL_CHILDREN(node);
 
-    int move_cnt = h->num_elts - rank;
-
     for (int j = h->num_elts; j > rank; j--)
     {
         STORE_RELAXED(keys[j], keys[j - 1]);
@@ -53,8 +51,6 @@ static inline void insert_leaf_slot(void *node, int rank, bsl_key_t key, bsl_val
     bsl_key_t *keys = NODE_KEYS(node);
     bsl_val_t *values = LEAF_VALUES(node);
 
-    int move_cnt = h->num_elts - rank;
-
     for (int j = h->num_elts; j > rank; j--)
     {
         STORE_RELAXED(keys[j], keys[j - 1]);
@@ -74,7 +70,7 @@ static inline void insert_leaf_slot(void *node, int rank, bsl_key_t key, bsl_val
 static inline int _bsl_insert(bsl_t *list, bsl_key_t key, bsl_val_t value)
 {
     if (key <= BSL_KEY_MIN || key >= BSL_KEY_MAX)
-        return -1;
+        return 0;
 
     int level_to_promote = bsl_random_level(key);
 
