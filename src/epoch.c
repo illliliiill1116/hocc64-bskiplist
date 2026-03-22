@@ -55,13 +55,40 @@ static void *gc_stack_pop_all(gc_stack_t *s)
     return EXCHANGE_ACQUIRE(s->head, NULL);
 }
 
-/* ------------------------------------------------------------------ */
-/* Thread context                                                     */
-/*                                                                    */
-/* Split across two cache lines to avoid false sharing:               */
-/*   line 0: in_critical + local_epoch  (read by GC scanner)          */
-/*   line 1: counters + pending lists   (written only by owner)       */
-/* ------------------------------------------------------------------ */
+
+typedef struct slot_node {
+    int index;
+    struct slot_node *next;
+} slot_node_t;
+
+static slot_node_t g_slot_nodes[EBR_MAX_THREADS];
+static slot_node_t * volatile  g_free_slot_head = NULL;
+
+static void free_slot_push(int index)
+{
+    slot_node_t *node = &g_slot_nodes[index];
+    node->index = index;
+    slot_node_t *old;
+    do {
+        old = LOAD_RELAXED(g_free_slot_head);
+        node->next = old;
+    }
+    while (!CAS_WEAK(g_free_slot_head, &old, node,
+                     __ATOMIC_RELEASE, __ATOMIC_RELAXED));
+}
+
+static int free_slot_pop(void)
+{
+    slot_node_t *old;
+    do {
+        old = LOAD_ACQUIRE(g_free_slot_head);
+        if (!old) return -1;
+    }
+    while (!CAS_WEAK(g_free_slot_head, &old, old->next,
+                     __ATOMIC_ACQUIRE, __ATOMIC_RELAXED));
+    return old->index;
+}
+
 
 typedef struct
 {
@@ -73,14 +100,15 @@ typedef struct
     /* cache line 1 - written only by the owning thread */
     int   op_count;
     int   epoch_tick;
+    int   slot_index;
     void *pending[EBR_EPOCH_COUNT];
     char  _pad1[CACHE_LINE_SIZE
-                - sizeof(int) * 2
+                - sizeof(int) * 3
                 - sizeof(void*) * EBR_EPOCH_COUNT];
 } CACHE_ALIGNED thread_ctx_t;
 
 STATIC_ASSERT(sizeof(int) * 2 <= CACHE_LINE_SIZE);
-STATIC_ASSERT(sizeof(int) * 2 + sizeof(void*) * EBR_EPOCH_COUNT <= CACHE_LINE_SIZE);
+STATIC_ASSERT(sizeof(int) * 3 + sizeof(void*) * EBR_EPOCH_COUNT <= CACHE_LINE_SIZE);
 
 /* ------------------------------------------------------------------ */
 /* Global state                                                       */
@@ -102,7 +130,7 @@ static pthread_once_t g_tls_once = PTHREAD_ONCE_INIT;
 static __thread thread_ctx_t *my_ctx = NULL;
 
 /* ------------------------------------------------------------------ */
-/* Internal: reclaim a linked list of nodes                            */
+/* Internal: reclaim a linked list of nodes                           */
 /* ------------------------------------------------------------------ */
 
 static void reclaim_list(void *list)
@@ -203,29 +231,21 @@ static void try_gc(void)
 
 static void thread_destructor(void *val)
 {
-    thread_ctx_t *ctx = (thread_ctx_t*)val;
-    int n, i, e;
+    thread_ctx_t *ctx = (thread_ctx_t *)val;
+    int e;
 
     if (!ctx) return;
 
     /*
-     * Remove this thread from g_contexts so try_gc() no longer waits
-     * for it. Use CAS to avoid clearing a slot that has been reused
-     * by a newly joined thread (though slots are never recycled in
-     * this implementation, the CAS is a safe defensive measure).
+     * Clear the slot so try_gc() no longer waits for this thread,
+     * then return the index to the free list for reuse.
      */
-    n = LOAD_ACQUIRE(g_n_threads);
-    for (i = 0; i < n; i++)
-    {
-        thread_ctx_t *expected = ctx;
-        CAS_STRONG(g_contexts[i], &expected, (thread_ctx_t*)NULL,
-                   __ATOMIC_RELEASE, __ATOMIC_RELAXED);
-    }
+    STORE_RELEASE(g_contexts[ctx->slot_index], (thread_ctx_t *)NULL);
+    free_slot_push(ctx->slot_index);
 
     /*
-     * Transfer any pending nodes to the global g_retired stacks.
-     * Slot indices are preserved so the next GC winner reclaims them
-     * at the correct epoch boundary. gc_stack_push is lock-free.
+     * Transfer pending nodes to the global retired stacks so the
+     * next GC winner can reclaim them.
      */
     for (e = 0; e < EBR_EPOCH_COUNT; e++)
     {
@@ -251,7 +271,7 @@ static void tls_key_init(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Thread context initialisation (cold path, runs once per thread)    */
+/* Thread context initialisation                                      */
 /* ------------------------------------------------------------------ */
 
 static void thread_init(void)
@@ -261,26 +281,28 @@ static void thread_init(void)
 
     pthread_once(&g_tls_once, tls_key_init);
 
-    /*
-     * posix_memalign ensures ctx is cache-line aligned, preventing
-     * false sharing between the hot fields of different threads.
-     */
-    if (posix_memalign((void**)&ctx, CACHE_LINE_SIZE, sizeof(thread_ctx_t)) != 0)
+    if (posix_memalign((void **)&ctx, CACHE_LINE_SIZE,
+                       sizeof(thread_ctx_t)) != 0)
         abort();
     memset(ctx, 0, sizeof(thread_ctx_t));
 
     /*
-     * Lock-free slot allocation: fetch_add gives each thread a unique
-     * index. STORE_RELEASE ensures the fully initialised ctx is visible
-     * to try_gc() before it can observe the updated g_n_threads.
+     * Try to reuse a freed slot first; only allocate a new one if
+     * the free list is empty. This keeps g_n_threads stable under
+     * steady-state thread churn and bounds try_gc() scan cost.
      */
-    idx = (int)FETCH_ADD_RELAXED(g_n_threads, 1);
-    if (idx >= EBR_MAX_THREADS)
+    idx = free_slot_pop();
+    if (idx == -1)
     {
-        free(ctx);
-        abort();
+        idx = (int)FETCH_ADD_RELAXED(g_n_threads, 1);
+        if (idx >= EBR_MAX_THREADS)
+        {
+            free(ctx);
+            abort();
+        }
     }
 
+    ctx->slot_index = idx;
     STORE_RELEASE(g_contexts[idx], ctx);
     my_ctx = ctx;
 
@@ -288,7 +310,7 @@ static void thread_init(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Public API                                                          */
+/* Public API                                                         */
 /* ------------------------------------------------------------------ */
 
 void epoch_enter(void)
@@ -333,7 +355,7 @@ void ebr_retire(void *ptr)
     int cur, slot;
 
     assert(ptr    && "ebr_retire: ptr must not be NULL");
-    assert(my_ctx && "ebr_retire: thread not registered (call epoch_enter first)");
+    assert(my_ctx && "ebr_retire: thread not registered");
 
     /*
      * Use the current global epoch to select the destination slot.
