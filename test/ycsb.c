@@ -13,11 +13,8 @@
 #include "bsl_inspect.h"
 #include "node.h"
 
-/*
- * Measure average latency over a batch of operations to amortise
- * clock_gettime() overhead (~20-50 ns on ARM64).
- */
-#define LATENCY_BATCH 1000
+
+#define LATENCY_BATCH 10
 
 /* First iteration is a warm-up and is excluded from results. */
 #define WARMUP_ITERS  1
@@ -259,6 +256,7 @@ int main(int argc, char **argv)
         load_wl.size++;
     }
     fclose(f_load);
+    printf("Loaded %zu keys from %s\n", load_wl.size, load_file);
 
     FILE *f_run = fopen(run_file, "r");
     while (run_wl.size < (size_t)iterations &&
@@ -277,8 +275,8 @@ int main(int argc, char **argv)
         run_wl.size++;
     }
     fclose(f_run);
+    printf("Loaded %zu ops from %s\n", run_wl.size, run_file);
 
-    /* Initial warm-up sleep before any measurement begins. */
     sleep(3);
 
     double  load_tpts[MEASURE_ITERS];
@@ -324,7 +322,6 @@ int main(int argc, char **argv)
         printf("\tIteration %d Run:  %f ops/us%s\n",
                iter, run_tpt, collect ? "" : "  [warm-up]");
 
-        //bsl_inspect_leaf_fill_factor(list);
         bsl_destroy(list);
     }
 
