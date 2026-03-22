@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -Wall -Wextra -I./include -pthread
+CFLAGS  = -Wall -Wextra -MMD -MP -I./include
 LDFLAGS = -pthread -lm
 
 SRC_DIR   = src
@@ -19,7 +19,7 @@ ASAN			?= 0
 ifeq ($(DEBUG),1)
     CFLAGS += -O0 -g -DDEBUG
 else
-    CFLAGS += -O3 -g
+    CFLAGS += -O3 -g -march=native
 endif
 
 ifeq ($(MEASURE_LATENCY),1)
@@ -61,3 +61,5 @@ $(BUILD_DIR)/%: $(TEST_DIR)/%.c $(OBJS) | $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+-include $(OBJS:.o=.d)
