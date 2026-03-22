@@ -4,14 +4,14 @@
 
 ```bash
 make DEBUG=1
-./build/bsl_consistency_test
+./build/test_bsl
 ```
 
 With ASAN:
 
 ```bash
 make ASAN=1 DEBUG=1
-./build/bsl_consistency_test
+./build/test_bsl
 ```
 
 ## YCSB
