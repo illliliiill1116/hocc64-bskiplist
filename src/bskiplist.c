@@ -3,69 +3,73 @@
 #include "node.h"
 #include <stdlib.h>
 
-bsl_t* bsl_new()
+bsl_t* bsl_new(void)
 {
-    bsl_t *list = (bsl_t*)malloc(sizeof(bsl_t));
+    int i, j;
 
+    bsl_t *list = (bsl_t*)malloc(sizeof(bsl_t));
     if (!list) return NULL;
 
-    leaf_node_t *leaf_sentinel = (leaf_node_t*)bsl_alloc_node();
-
+    /* level 0：leaf sentinel */
+    leaf_node_t *leaf_sentinel = (leaf_node_t*)bsl_node_alloc();
     if (!leaf_sentinel)
     {
-        free(list); 
+        free(list);
         return NULL;
     }
-    
-    leaf_sentinel->header.level = 0;
-    leaf_sentinel->header.num_elts = 1; 
-    leaf_sentinel->header.ctrl = HOCC_INIT;
-    leaf_sentinel->header.next = NULL;
-    leaf_sentinel->header.next_header = BSL_KEY_MAX;
-    leaf_sentinel->keys[0] = BSL_KEY_MIN;
-    list->headers[0] = leaf_sentinel;
 
-    for (int i = 1; i < MAX_LEVEL; i++)
+    leaf_sentinel->header.ctrl        = HOCC_INIT;
+    leaf_sentinel->header.level       = 0;
+    leaf_sentinel->header.num_elts    = 1;
+    leaf_sentinel->header.next        = NULL;
+    leaf_sentinel->header.next_header = BSL_KEY_MAX;
+    leaf_sentinel->keys[0]            = BSL_KEY_MIN;
+    list->headers[0] = (node_header_t*)leaf_sentinel;
+
+    for (i = 1; i < MAX_LEVEL; i++)
     {
-        internal_node_t *internal_sentinel = (internal_node_t*)bsl_alloc_node();
-        if (!internal_sentinel) 
+        internal_node_t *s = (internal_node_t*)bsl_node_alloc();
+        if (!s)
         {
-            for (int j = 0; j < i; j++) 
-                free(list->headers[j]);
+            for (j = 0; j < i; j++)
+                bsl_node_destroy(list->headers[j]);
             free(list);
-            return NULL; 
+            return NULL;
         }
-        internal_sentinel->header.level = i;
-        internal_sentinel->header.num_elts = 1;
-        internal_sentinel->header.ctrl = HOCC_INIT;
-        internal_sentinel->header.next = NULL;
-        internal_sentinel->header.next_header = BSL_KEY_MAX;
-        internal_sentinel->keys[0] = BSL_KEY_MIN;
-        internal_sentinel->children[0] = list->headers[i-1];
-        list->headers[i] = internal_sentinel;
+
+        s->header.ctrl        = HOCC_INIT;
+        s->header.level       = i;
+        s->header.num_elts    = 1;
+        s->header.next        = NULL;
+        s->header.next_header = BSL_KEY_MAX;
+        s->keys[0]            = BSL_KEY_MIN;
+        s->children[0]        = list->headers[i - 1];
+        list->headers[i]      = (node_header_t*)s;
     }
 
     return list;
 }
+
 
 void bsl_destroy(bsl_t *list)
 {
     if (!list) return;
 
     epoch_enter();
+    epoch_exit();
+
+    ebr_sync();
 
     for (int l = 0; l < MAX_LEVEL; l++)
     {
-        node_header_t *curr = (node_header_t *)list->headers[l];
-        while (curr) 
+        node_header_t *curr = list->headers[l];
+        while (curr)
         {
-            node_header_t *next = (node_header_t *)curr->next;
-            free(curr);
+            node_header_t *next = (node_header_t*)curr->next;
+            bsl_node_destroy(curr);
             curr = next;
         }
     }
 
     free(list);
-
-    epoch_exit();
 }

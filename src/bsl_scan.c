@@ -1,3 +1,19 @@
+/*
+ * bsl_scan.c
+ *
+ * This implementation is inspired by the algorithm described in:
+ *   Yicong Luo et al., "<Bridging Cache-Friendliness and Concurrency: A Locality-Optimized In-Memory B-Skiplist>", ICPP 2025
+ *   arXiv: https://arxiv.org/abs/2507.21492
+ *
+ * Original C++ reference implementation (Apache 2.0):
+ *   https://github.com/Ratbuyer/bskip_artifact
+ *
+ * This is an independent C reimplementation. The read-only traversal phase
+ * (levels above level_to_promote) uses optimistic version validation instead
+ * of reader-writer locks, falling back to pessimistic write locking during
+ * the modification phase.
+ */
+
 #include "bskiplist.h"
 #include "node.h"
 #include "epoch.h"
@@ -5,11 +21,11 @@
 #include <string.h>
 
 static inline void 
-_bsl_limit_scan(bsl_t *list, bsl_key_t start, size_t limit, range_cb cb, void *arg)
+_bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length, range_cb cb, void *arg)
 {
-    if (unlikely(limit <= 0)) return;
+    if (unlikely(length <= 0)) return;
 
-    size_t remaining = limit;
+    size_t remaining = length;
     bsl_key_t current_start = start;
 
 top_retry:;
@@ -33,10 +49,14 @@ top_retry:;
             curr_v = next_v;
         }
 
-        int rank = find_rank(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
+        int rank = find_rank_optimistic(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
         if (!child) goto top_retry; 
 
+        /* two-phase HOH validation, see bsl_get.c */
+        if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+            goto top_retry;
+        
         if (level != 1)
         {
             hocc64_t child_v = NODE_LOAD_VERSION(child);
@@ -63,7 +83,7 @@ top_retry:;
 
     
     int num_elts = LOAD_RELAXED(leaf->header.num_elts);
-    int rank = find_rank(leaf->keys, num_elts, current_start);
+    int rank = find_rank_locked(leaf->keys, num_elts, current_start);
 
     if (LOAD_RELAXED(leaf->keys[rank]) != current_start || (current_start == BSL_KEY_MIN && leaf == list->headers[0]))
     {
@@ -100,7 +120,7 @@ top_retry:;
 
         if (batch_size > 0)
         {
-            for (int i = 0; i < batch_size; ++i)
+            for (size_t i = 0; i < batch_size; ++i)
             {
                 int ofs = rank + i;
                 cb(leaf->keys[ofs], leaf->values[ofs], arg);
@@ -111,7 +131,7 @@ top_retry:;
         }
 
 
-        leaf_node_t *next = (leaf_node_t *)LOAD_RELAXED(leaf->header.next);
+        leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
         if (!next || remaining == 0)
         {
             NODE_READ_UNLOCK(&leaf->header);
@@ -130,19 +150,19 @@ top_retry:;
     }
 }
 
-void bsl_limit_scan(bsl_t *list, bsl_key_t start, size_t limit, range_cb cb, void *arg)
+void bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length, range_cb cb, void *arg)
 {
     epoch_enter();
-    _bsl_limit_scan(list, start, limit, cb, arg);
+    _bsl_scan_n(list, start, length, cb, arg);
     epoch_exit();
 }
 
 static inline void 
-_bsl_limit_scan_batch(bsl_t *list, bsl_key_t start, size_t limit, range_batch_cb cb, void *arg)
+_bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg)
 {
-    if (unlikely(limit <= 0)) return;
+    if (unlikely(length <= 0)) return;
 
-    size_t remaining = limit;
+    size_t remaining = length;
     bsl_key_t current_start = start;
 
 top_retry:;
@@ -166,10 +186,14 @@ top_retry:;
             curr_v = next_v;
         }
 
-        int rank = find_rank(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
+        int rank = find_rank_optimistic(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
         if (!child) goto top_retry; 
 
+        /* two-phase HOH validation, see bsl_get.c */
+        if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+            goto top_retry;
+        
         if (level != 1)
         {
             hocc64_t child_v = NODE_LOAD_VERSION(child);
@@ -196,7 +220,7 @@ top_retry:;
 
     
     int num_elts = LOAD_RELAXED(leaf->header.num_elts);
-    int rank = find_rank(leaf->keys, num_elts, current_start);
+    int rank = find_rank_locked(leaf->keys, num_elts, current_start);
 
     if (LOAD_RELAXED(leaf->keys[rank]) != current_start || (current_start == BSL_KEY_MIN && leaf == list->headers[0]))
     {
@@ -245,8 +269,7 @@ top_retry:;
             current_start = LOAD_RELAXED(leaf->keys[rank + batch_size - 1]) + 1;
         }
 
-
-        leaf_node_t *next = (leaf_node_t *)LOAD_RELAXED(leaf->header.next);
+        leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
         if (!next || remaining == 0)
         {
             NODE_READ_UNLOCK(&leaf->header);
@@ -265,9 +288,9 @@ top_retry:;
     }
 }
 
-void bsl_limit_scan_batch(bsl_t *list, bsl_key_t start, size_t limit, range_batch_cb cb, void *arg)
+void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg)
 {
     epoch_enter();
-    _bsl_limit_scan_batch(list, start, limit, cb, arg);
+    _bsl_scan_n_batch(list, start, length, cb, arg);
     epoch_exit();
 }

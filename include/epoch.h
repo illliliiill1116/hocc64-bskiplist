@@ -1,40 +1,70 @@
+/*
+ * epoch.h - Epoch-Based Reclamation (EBR) for lock-free data structures
+ */
+
 #ifndef EPOCH_H
 #define EPOCH_H
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <node.h>
+/* Number of epoch_exit() calls between GC attempts. */
+#ifndef EBR_GC_THRESHOLD
+#  define EBR_GC_THRESHOLD 64
+#endif
 
-#define EPOCH_COUNT     3 
-#define GC_THRESHOLD    1024
+/* Maximum number of concurrently registered threads. */
+#ifndef EBR_MAX_THREADS
+#  define EBR_MAX_THREADS 256
+#endif
 
-/**
- * GC next pointer.
- * RATIONALE: To avoid TSan false positives, place 'next' at the absolute end.
- * This prevents HOCC Readers (find_key) from overlapping with the intrusive 
- * link while scanning the 'keys' region.
- */
-#define NODE_GC_NEXT_OFFSET (NODE_SIZE - sizeof(void*))
-STATIC_ASSERT(NODE_GC_NEXT_OFFSET >= LEAF_VALUES_OFFSET);
-STATIC_ASSERT(NODE_GC_NEXT_OFFSET >= INTERNAL_CHILDREN_OFFSET);
+/* Number of epoch slots. Must be 3; do not change. */
+#define EBR_EPOCH_COUNT 3
 
+/* Statistics (available only when compiled with -DDEBUG). */
 typedef struct {
-    /* Read-mostly by others */
-        int local_epoch;
-        int in_critical;
-    char __padding[CACHE_LINE_SIZE - sizeof(int) * 2];
+    int  global_epoch;
+    int  active_threads;
+    long total_retired;
+    long total_reclaimed;
+} ebr_stats_t;
 
-    void* pending_gc[EPOCH_COUNT];
-    uint64_t op_count;
-} __attribute__((aligned(CACHE_LINE_SIZE))) thread_context_t;
-
-extern __thread thread_context_t* my_ctx;
-
+/*
+ * epoch_enter - enter a read/write critical section
+ *
+ * Must be called before accessing any node that may be concurrently
+ * deleted. Initialises per-thread state on first call. Non-reentrant:
+ * each epoch_enter must be paired with exactly one epoch_exit.
+ */
 void epoch_enter(void);
+
+/*
+ * epoch_exit - leave the critical section
+ *
+ * Must be paired with epoch_enter. Periodically advances the global
+ * epoch and reclaims nodes that are no longer reachable.
+ */
 void epoch_exit(void);
 
-void* bsl_alloc_node(void);
-void bsl_free_node(void* ptr);
-void try_gc(void);
+/*
+ * ebr_retire - mark a node for deferred reclamation
+ *
+ * Call after the node has been unlinked from the data structure.
+ * The node's tail bytes (NODE_GC_NEXT_OFFSET) are used as an
+ * intrusive link; no wrapper allocation or free callback is needed.
+ * ptr must not be NULL.
+ */
+void ebr_retire(void *ptr);
 
-#endif
+/*
+ * ebr_sync - block until all previously retired nodes are freed
+ *
+ * For use in tests and cleanup paths only; not safe on the hot path.
+ */
+void ebr_sync(void);
+
+/*
+ * ebr_get_stats - fill *out with current counters
+ *
+ * total_retired and total_reclaimed are zero unless compiled with -DDEBUG.
+ */
+void ebr_get_stats(ebr_stats_t *out);
+
+#endif /* EPOCH_H */

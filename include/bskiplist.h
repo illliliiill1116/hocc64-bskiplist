@@ -17,7 +17,7 @@ int bsl_delete(bsl_t *list, bsl_key_t key);
 int bsl_get(bsl_t *list, bsl_key_t key, bsl_val_t *out_val);
 
 typedef void (*range_cb)(bsl_key_t key, bsl_val_t val, void *arg);
-void bsl_limit_scan(bsl_t *list, bsl_key_t start, size_t limit, range_cb cb, void *arg);
+void bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length, range_cb cb, void *arg);
 
 typedef struct {
     const bsl_key_t *keys;
@@ -27,7 +27,6 @@ typedef struct {
 
 typedef void (*range_batch_cb)(bsl_range_t range, void *arg);
 
-void bsl_limit_scan_batch(bsl_t *list, bsl_key_t start, size_t limit, 
-                        range_batch_cb cb, void *arg);
+void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg);
 
 #endif /* BSKIPLIST_H */

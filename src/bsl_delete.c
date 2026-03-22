@@ -1,14 +1,31 @@
+
+/*
+ * bsl_delete.c
+ *
+ * This implementation is inspired by the algorithm described in:
+ *   Yicong Luo et al., "<Bridging Cache-Friendliness and Concurrency: A Locality-Optimized In-Memory B-Skiplist>", ICPP 2025
+ *   arXiv: https://arxiv.org/abs/2507.21492
+ *
+ * Original C++ reference implementation (Apache 2.0):
+ *   https://github.com/Ratbuyer/bskip_artifact
+ *
+ * This is an independent C reimplementation. The read-only traversal phase
+ * (levels above level_to_promote) uses optimistic version validation instead
+ * of reader-writer locks, falling back to pessimistic write locking during
+ * the modification phase.
+ */
+
 #include "bskiplist.h"
 #include "node.h"
 #include "epoch.h"
-#include "random_level.h"
+#include "bsl_level.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <unistd.h>
 
-static inline void delete_internal_slot(void *node, int rank)
+static inline void delete_internal_slot(void *node, uint32_t rank)
 {
     node_header_t *h = (node_header_t *)node;
     bsl_key_t *keys = NODE_KEYS(node);
@@ -24,7 +41,7 @@ static inline void delete_internal_slot(void *node, int rank)
     __atomic_sub_fetch(&h->num_elts, 1, __ATOMIC_RELAXED);
 }
 
-static inline void delete_leaf_slot(void *node, int rank)
+static inline void delete_leaf_slot(void *node, uint32_t rank)
 {
     node_header_t *h = (node_header_t *)node;
     bsl_key_t *keys = NODE_KEYS(node);
@@ -47,7 +64,7 @@ static inline int _bsl_delete(bsl_t *list, bsl_key_t key)
     if (key <= BSL_KEY_MIN || key >= BSL_KEY_MAX)
         return 0;
 
-    int level_to_promote = bsl_random_level(key);
+    int level_to_promote = bsl_level_for_key(key);
 
 top_retry:;
 
@@ -73,16 +90,20 @@ top_retry:;
         }
 
         bsl_key_t *keys = NODE_KEYS(curr);
-        int rank = find_rank(keys, LOAD_RELAXED(curr->num_elts), key);
+        uint32_t rank = find_rank_optimistic(keys, LOAD_RELAXED(curr->num_elts), key);
         
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
         if (child == NULL) goto top_retry;
 
-        hocc64_t child_v = NODE_LOAD_VERSION(child);
-
+        /* two-phase HOH validation, see bsl_get.c */
         if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
             goto top_retry;
         
+        hocc64_t child_v = NODE_LOAD_VERSION(child);
+
+        if (!NODE_VALIDATE(curr, curr_v))
+            goto top_retry;
+
         curr = child;
         curr_v = child_v;
     }
@@ -97,7 +118,7 @@ top_retry:;
     }
 
     bsl_key_t *keys = NODE_KEYS(curr);
-    int rank = find_rank(keys, curr->num_elts, key);
+    uint32_t rank = find_rank_locked(keys, curr->num_elts, key);
     int found_key = (keys[rank] == key);
 
     node_header_t *prev = NULL;
@@ -109,7 +130,7 @@ top_retry:;
         curr = curr->next;
 
         keys = NODE_KEYS(curr);
-        rank = find_rank(keys, curr->num_elts, key);
+        rank = find_rank_locked(keys, curr->num_elts, key);
         found_key = (keys[rank] == key);
 
         if (!found_key) 
@@ -189,7 +210,7 @@ top_retry:;
             STORE_RELAXED(old_curr->num_elts, 0);
 
             NODE_WRITE_UNLOCK(old_curr);
-            bsl_free_node(old_curr);
+            ebr_retire(old_curr);
         }
         else
         {
@@ -220,7 +241,7 @@ top_retry:;
         STORE_RELAXED(left_node->next, current->next);
         STORE_RELAXED(current->num_elts, 0);
         NODE_WRITE_UNLOCK(current);
-        bsl_free_node(current);
+        ebr_retire(current);
     }
     else
     {
