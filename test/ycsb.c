@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <time.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -51,6 +54,49 @@ typedef struct
     int                 sample_count;
 
 } thread_args_t;
+
+void load_workload(const char *filename, workload_t *wl, int max_iters)
+{
+    int fd = open(filename, O_RDONLY);
+    struct stat st;
+    fstat(fd, &st);
+    
+    char *data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    char *ptr = data;
+    char *end = data + st.st_size;
+
+    while (wl->size < (size_t)max_iters && ptr < end)
+    {
+        while (ptr < end && (*ptr == ' ' || *ptr == '\n' || *ptr == '\r')) ptr++;
+        if (ptr >= end) break;
+
+        if (*ptr == 'I') { // INSERT
+            wl->ops[wl->size] = OP_INSERT;
+            ptr += 6; // skip "INSERT"
+        } else if (*ptr == 'R') { // READ
+            wl->ops[wl->size] = OP_READ;
+            ptr += 4; // skip "READ"
+        } else if (*ptr == 'S') { // SCAN
+            wl->ops[wl->size] = OP_SCAN;
+            ptr += 4; // skip "SCAN"
+        }
+
+        char *next_ptr;
+        wl->keys[wl->size] = strtoull(ptr, &next_ptr, 10);
+        ptr = next_ptr;
+
+        if (wl->ops[wl->size] == OP_SCAN)
+        {
+            wl->ranges_val[wl->size] = strtoull(ptr, &next_ptr, 10);
+            ptr = next_ptr;
+        }
+
+        wl->size++;
+    }
+
+    munmap(data, st.st_size);
+    close(fd);
+}
 
 static inline uint64_t get_nsecs(void)
 {
@@ -244,37 +290,12 @@ int main(int argc, char **argv)
         0
     };
 
-    FILE    *f_load = fopen(load_file, "r");
-    char     op_str[16];
-    uint64_t k;
-
-    while (load_wl.size < (size_t)iterations &&
-           fscanf(f_load, "%15s %lu", op_str, &k) == 2)
-    {
-        load_wl.keys[load_wl.size] = k;
-        load_wl.ops[load_wl.size]  = OP_INSERT;
-        load_wl.size++;
-    }
-    fclose(f_load);
+    printf("Loading %s ...\n", load_file);
+    load_workload(load_file, &load_wl, iterations);
     printf("Loaded %zu keys from %s\n", load_wl.size, load_file);
 
-    FILE *f_run = fopen(run_file, "r");
-    while (run_wl.size < (size_t)iterations &&
-           fscanf(f_run, "%15s %lu", op_str, &k) == 2)
-    {
-        run_wl.keys[run_wl.size] = k;
-        if (strcmp(op_str, "INSERT") == 0)
-            run_wl.ops[run_wl.size] = OP_INSERT;
-        else if (strcmp(op_str, "READ") == 0)
-            run_wl.ops[run_wl.size] = OP_READ;
-        else if (strcmp(op_str, "SCAN") == 0)
-        {
-            run_wl.ops[run_wl.size] = OP_SCAN;
-            fscanf(f_run, "%lu", &run_wl.ranges_val[run_wl.size]);
-        }
-        run_wl.size++;
-    }
-    fclose(f_run);
+    printf("Loading %s ...\n", run_file);
+    load_workload(run_file, &run_wl, iterations);
     printf("Loaded %zu ops from %s\n", run_wl.size, run_file);
 
     sleep(3);
