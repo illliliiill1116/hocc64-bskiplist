@@ -49,7 +49,7 @@ top_retry:;
             curr_v = next_v;
         }
 
-        int rank = find_rank_optimistic(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
+        int rank = find_rank(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
         if (!child) goto top_retry; 
 
@@ -81,9 +81,8 @@ top_retry:;
 
     leaf_node_t *leaf = (leaf_node_t *)curr;
 
-    
     int num_elts = LOAD_RELAXED(leaf->header.num_elts);
-    int rank = find_rank_locked(leaf->keys, num_elts, current_start);
+    int rank = find_rank_linear(leaf->keys, num_elts, current_start);
 
     if (LOAD_RELAXED(leaf->keys[rank]) != current_start || (current_start == BSL_KEY_MIN && leaf == list->headers[0]))
     {
@@ -186,7 +185,7 @@ top_retry:;
             curr_v = next_v;
         }
 
-        int rank = find_rank_optimistic(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
+        int rank = find_rank_binary(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
         if (!child) goto top_retry; 
 
@@ -220,7 +219,7 @@ top_retry:;
 
     
     int num_elts = LOAD_RELAXED(leaf->header.num_elts);
-    int rank = find_rank_locked(leaf->keys, num_elts, current_start);
+    int rank = find_rank_linear(leaf->keys, num_elts, current_start);
 
     if (LOAD_RELAXED(leaf->keys[rank]) != current_start || (current_start == BSL_KEY_MIN && leaf == list->headers[0]))
     {

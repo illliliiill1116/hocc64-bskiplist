@@ -3,3 +3,5 @@
 *.data
 *.data.old
 *.txt
+
+go.sum

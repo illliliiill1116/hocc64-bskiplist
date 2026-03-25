@@ -7,7 +7,7 @@
 
 /* Number of epoch_exit() calls between GC attempts. */
 #ifndef EBR_GC_THRESHOLD
-#  define EBR_GC_THRESHOLD 64
+#  define EBR_GC_THRESHOLD 256
 #endif
 
 /* Maximum number of concurrently registered threads. */

@@ -19,7 +19,7 @@ ASAN			?= 0
 ifeq ($(DEBUG),1)
     CFLAGS += -O0 -g -DDEBUG
 else
-    CFLAGS += -O3 -g -march=native
+    CFLAGS += -O3 -DNDEBUG -march=native
 endif
 
 ifeq ($(MEASURE_LATENCY),1)
@@ -38,6 +38,7 @@ SRCS      = $(wildcard $(SRC_DIR)/*.c)
 OBJS      = $(SRCS:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
 TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(BUILD_DIR)/%)
+STATIC_LIB  = $(BUILD_DIR)/libbskiplist.a
 
 # ------------------------------------------------------------------ #
 # Rules                                                              #
@@ -45,7 +46,7 @@ TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(BUILD_DIR)/%)
 
 .PHONY: all clean debug
 
-all: $(BUILD_DIR) $(OBJS) $(TEST_BINS)
+all: $(BUILD_DIR) $(OBJS) $(TEST_BINS) lib
 
 debug:
 	$(MAKE) DEBUG=1
@@ -58,6 +59,12 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
 
 $(BUILD_DIR)/%: $(TEST_DIR)/%.c $(OBJS) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
+
+$(STATIC_LIB): $(OBJS)
+	ar rcs $@ $^
+
+lib: $(BUILD_DIR) $(STATIC_LIB)
 
 clean:
 	rm -rf $(BUILD_DIR)

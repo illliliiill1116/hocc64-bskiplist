@@ -112,7 +112,7 @@ top_retry:;
         }
 
         bsl_key_t *keys = NODE_KEYS(curr);
-        int rank = find_rank_optimistic(keys, LOAD_RELAXED(curr->num_elts), key);
+        int rank = find_rank(keys, LOAD_RELAXED(curr->num_elts), key);
         
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
         if (child == NULL) goto top_retry;
@@ -155,7 +155,7 @@ top_retry:;
     }
 
     bsl_key_t *keys = NODE_KEYS(curr);
-    uint32_t rank = find_rank_locked(keys, curr->num_elts, key);
+    uint32_t rank = find_rank_linear(keys, curr->num_elts, key);
     int found_key = (keys[rank] == key);
 
     if (found_key)
@@ -322,7 +322,7 @@ top_retry:;
         }
 
         bsl_key_t *keys = NODE_KEYS(curr);
-        int rank = find_rank_locked(keys, curr->num_elts, key);
+        int rank = find_rank_linear(keys, curr->num_elts, key);
 
         assert(level_to_promote > level);
         node_header_t *new_node = (node_header_t *)new_nodes[num_split];
