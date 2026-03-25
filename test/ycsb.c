@@ -130,7 +130,7 @@ static void scan_cb(bsl_range_t range, void *arg)
 {
     uint64_t *sum = (uint64_t *)arg;
     for (size_t i = 0; i < range.count; i++)
-        *sum += __atomic_load_n(&range.vals[i], __ATOMIC_RELAXED);
+        *sum += range.vals[i];
 }
 
 static void *worker_func(void *arg)
