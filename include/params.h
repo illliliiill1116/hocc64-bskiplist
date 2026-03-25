@@ -12,6 +12,6 @@ typedef uint64_t bsl_val_t;
 #define NODE_SIZE 2048
 #define CACHE_LINE_SIZE 64
 
-#define PROMOTE_RATE_SCALE 1
+#define PROMOTE_RATE_SCALE 2
 
 #endif
