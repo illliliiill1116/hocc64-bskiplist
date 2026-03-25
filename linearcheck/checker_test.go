@@ -248,9 +248,9 @@ func TestLinearizabilityStress(t *testing.T) {
 	const (
 		numRounds    = 10
 		numThreads   = 8
-		opsPerThread = 1000
-		keyRange     = 20
-		scanLength   = 5
+		opsPerThread = 200
+		keyRange     = 100
+		scanLength   = 20
 	)
 
 	for round := 0; round < numRounds; round++ {

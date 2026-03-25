@@ -7,9 +7,12 @@ CGO_LDFLAGS_VAL = -L$(abspath $(BUILD_DIR)) -lbskiplist -lpthread -lm
 
 GO := $(shell command -v go 2>/dev/null)
 
-.PHONY: all check clean tidy
+.PHONY: all check clean tidy lib
 
 all: check
+
+lib:
+	$(MAKE) -C $(ROOT)
 
 tidy:
 ifndef GO
@@ -19,7 +22,7 @@ endif
 	go mod tidy
 
 
-check: tidy
+check: tidy lib
 	@echo "--- Running Linearizability Tests ---"
 	CGO_CFLAGS="$(CGO_CFLAGS_VAL)" \
 	CGO_LDFLAGS="$(CGO_LDFLAGS_VAL)" \
