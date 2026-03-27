@@ -132,6 +132,7 @@ func runStressTest(
 	opsPerThread int,
 	keyRange uint64,
 	scanLength int,
+	weights map[int]int,
 ) []porcupine.Operation {
 
 	var (
@@ -141,57 +142,59 @@ func runStressTest(
 		clientCounter int64
 	)
 
+	type weightRange struct {
+		op  int
+		max int
+	}
+	var ranges []weightRange
+	current := 0
+	for op, w := range weights {
+		current += w
+		ranges = append(ranges, weightRange{op, current})
+	}
+	totalWeight := current
+
 	for t := 0; t < numThreads; t++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
 			clientId := int(atomic.AddInt64(&clientCounter, 1))
-			seed := time.Now().UnixNano() + int64(clientId)
-			rng := rand.New(rand.NewSource(seed))
+			rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(clientId)))
 			local := make([]porcupine.Operation, 0, opsPerThread)
 
 			for i := 0; i < opsPerThread; i++ {
+				r := rng.Intn(totalWeight)
+				var opKind int
+				for _, wr := range ranges {
+					if r < wr.max {
+						opKind = wr.op
+						break
+					}
+				}
+
 				key := rng.Uint64()%keyRange + 1
 				val := rng.Uint64()%1000 + 1
+				var input mapOp
+				var result mapResult
 
-				var (
-					input  mapOp
-					result mapResult
-					callT  int64
-					retT   int64
-				)
-
-				switch r := rng.Intn(100); {
-				case r < 40: // Insert Operation
+				callT := time.Now().UnixNano()
+				switch opKind {
+				case opInsert:
 					input = mapOp{kind: opInsert, key: key, val: val}
-					callT = time.Now().UnixNano()
-					ret := m.Insert(key, val)
-					retT = time.Now().UnixNano()
-					result = mapResult{retCode: ret}
-
-				case r < 60: // Delete Operation
+					result = mapResult{retCode: m.Insert(key, val)}
+				case opDelete:
 					input = mapOp{kind: opDelete, key: key}
-					callT = time.Now().UnixNano()
-					ret := m.Delete(key)
-					retT = time.Now().UnixNano()
-					result = mapResult{retCode: ret}
-
-				case r < 90: // Get Operation
+					result = mapResult{retCode: m.Delete(key)}
+				case opGet:
 					input = mapOp{kind: opGet, key: key}
-					callT = time.Now().UnixNano()
-					ret, outVal := m.Get(key)
-					retT = time.Now().UnixNano()
-					result = mapResult{retCode: ret, outVal: outVal}
-
-				default: // Scan Operation
+					code, outVal := m.Get(key)
+					result = mapResult{retCode: code, outVal: outVal}
+				case opScan:
 					startKey := rng.Uint64()%keyRange + 1
 					input = mapOp{kind: opScan, start: startKey, count: scanLength}
-					callT = time.Now().UnixNano()
-					pairs := m.Scan(startKey, scanLength)
-					retT = time.Now().UnixNano()
-					result = mapResult{pairs: pairs}
+					result = mapResult{pairs: m.Scan(startKey, scanLength)}
 				}
+				retT := time.Now().UnixNano()
 
 				local = append(local, porcupine.Operation{
 					ClientId: clientId,
@@ -201,13 +204,11 @@ func runStressTest(
 					Return:   retT,
 				})
 			}
-
 			mu.Lock()
 			records = append(records, local...)
 			mu.Unlock()
 		}()
 	}
-
 	wg.Wait()
 	return records
 }
@@ -244,31 +245,40 @@ func TestSequentialSanity(t *testing.T) {
 	t.Logf("get(2) after update = %d", val)
 }
 
-func TestLinearizabilityStress(t *testing.T) {
-	const (
-		numRounds    = 10
-		numThreads   = 8
-		opsPerThread = 200
-		keyRange     = 100
-		scanLength   = 20
-	)
+func TestLinearizabilitySuites(t *testing.T) {
+	testCases := []struct {
+		name     string
+		threads  int
+		keyRange uint64
+		ops      int
+		scanLen  int
+		weights  map[int]int
+	}{
+		{
+			name:    "High_Contention",
+			threads: 8, keyRange: 50, ops: 500, scanLen: 0,
+			weights: map[int]int{opInsert: 40, opDelete: 20, opGet: 40, opScan: 0},
+		},
+		{
+			name:    "Split_Scan",
+			threads: 8, keyRange: 2000, ops: 500, scanLen: 10,
+			weights: map[int]int{opInsert: 30, opDelete: 10, opGet: 10, opScan: 50},
+		},
+	}
 
-	for round := 0; round < numRounds; round++ {
-		m := NewBSLMap()
-		ops := runStressTest(m, numThreads, opsPerThread, keyRange, scanLength)
-		m.Destroy()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			for round := 0; round < 10; round++ {
+				m := NewBSLMap()
+				ops := runStressTest(m, tc.threads, tc.ops, tc.keyRange, tc.scanLen, tc.weights)
+				m.Destroy()
 
-		result, _ := porcupine.CheckOperationsVerbose(bslModel, ops, 5*time.Second)
-		switch result {
-		case porcupine.Illegal:
-			//path := fmt.Sprintf("violation_stress_round%d.html", round)
-			//porcupine.VisualizePath(bslModel, info, path)
-			t.Errorf("Round %d: NOT LINEARIZABLE", round)
-			return
-		case porcupine.Unknown:
-			t.Logf("Round %d: Checker timeout", round)
-		default:
-			t.Logf("Round %d: OK (%d operations)", round, len(ops))
-		}
+				res, _ := porcupine.CheckOperationsVerbose(bslModel, ops, 20*time.Second)
+				if res == porcupine.Illegal {
+					t.Errorf("[%s] Round %d: FAILED LINEARIZABILITY", tc.name, round)
+					return
+				}
+			}
+		})
 	}
 }
