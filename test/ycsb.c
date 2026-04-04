@@ -128,9 +128,12 @@ static double find_median(double *arr, int n)
 
 static void scan_cb(bsl_range_t range, void *arg)
 {
-    uint64_t *sum = (uint64_t *)arg;
+    uint64_t *sum_ptr = (uint64_t *)arg;
+
+    uint64_t local_sum = 0;
     for (size_t i = 0; i < range.count; i++)
-        *sum += range.vals[i];
+        local_sum += range.vals[i];
+    *sum_ptr += local_sum;
 }
 
 static void *worker_func(void *arg)
