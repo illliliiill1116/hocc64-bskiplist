@@ -33,3 +33,9 @@ With latency collection:
 make MEASURE_LATENCY=1
 ./build/ycsb /data/loada_unif_int.dat /data/txnsa_unif_int.dat 8 100000000
 ```
+
+With structural and integrity check:
+
+```bash
+make CHECK_STRUCTURE=1
+```

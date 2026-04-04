@@ -346,6 +346,10 @@ int main(int argc, char **argv)
         printf("\tIteration %d Run:  %f ops/us%s\n",
                iter, run_tpt, collect ? "" : "  [warm-up]");
 
+#ifdef CHECK_STRUCTURE
+        bsl_inspect_all(list, NULL);
+#endif
+
         bsl_destroy(list);
     }
 

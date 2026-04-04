@@ -15,6 +15,7 @@ DEBUG           ?= 0
 MEASURE_LATENCY ?= 0
 
 ASAN			?= 0
+CHECK_STRUCTURE ?= 0
 
 ifeq ($(DEBUG),1)
     CFLAGS += -O0 -g -DDEBUG
@@ -28,6 +29,10 @@ endif
 
 ifeq ($(ASAN),1)
     CFLAGS += -fsanitize=address,undefined -fno-omit-frame-pointer
+endif
+
+ifeq ($(CHECK_STRUCTURE),1)
+    CFLAGS += -DCHECK_STRUCTURE=1
 endif
 
 # ------------------------------------------------------------------ #

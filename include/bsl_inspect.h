@@ -16,7 +16,7 @@ typedef struct {
     int      fill_buckets[11];   /* 0–9%, 10–19%, …, 100% */
 } bsl_inspect_result_t;
 
-int bsl_inspect_order(bsl_t *list);
+int bsl_inspect_order(bsl_t *list, bsl_val_t *checksum_out);
 int bsl_inspect_index(bsl_t *list);
 int bsl_inspect_levels(bsl_t *list);
 int bsl_inspect_next_headers(bsl_t *list);
