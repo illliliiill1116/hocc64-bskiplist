@@ -25,7 +25,7 @@ top_retry:;
     for (int i = MAX_LEVEL - 1; i >= 0; i--)
     {
         /* Horizontal traversal */
-        while (curr_v && LOAD_RELAXED(curr->next_header) <= key)
+        while (LOAD_RELAXED(curr->next_header) <= key)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
             if (!next) goto top_retry;
