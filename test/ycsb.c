@@ -132,8 +132,11 @@ static void scan_cb(bsl_range_t range, void *arg)
 
     uint64_t local_sum = 0;
     for (size_t i = 0; i < range.count; i++)
+    {
+        local_sum += range.keys[i];
         local_sum += range.vals[i];
-    *sum_ptr += local_sum;
+    }
+    *sum_ptr = local_sum;
 }
 
 static void *worker_func(void *arg)
