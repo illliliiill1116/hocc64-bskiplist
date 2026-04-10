@@ -93,7 +93,11 @@ top_retry:;
         {
             void          **children = INTERNAL_CHILDREN(curr);
             node_header_t  *child    = (node_header_t *)LOAD_RELAXED(children[rank]);
-            if (!child) goto top_retry;
+            if (!child)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            } 
 
             /*
              * Two-phase validation for optimistic HOH traversal.
