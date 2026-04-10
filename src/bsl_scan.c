@@ -188,7 +188,7 @@ top_retry:;
             goto top_retry;
         }
 
-        hocc64_t next_v = NODE_LOAD_VERSION(leaf);
+        hocc64_t next_v = NODE_LOAD_VERSION(next);
 
         if (!NODE_VALIDATE(leaf, curr_v))
         {
