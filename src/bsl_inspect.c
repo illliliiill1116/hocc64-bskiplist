@@ -21,10 +21,8 @@ collect_stats(bsl_t *list, bsl_inspect_result_t *r)
     node_header_t *curr = leaf_head(list);
     while (curr)
     {
-        NODE_READ_LOCK(curr);
         uint32_t       num  = curr->num_elts;
         node_header_t *next = (node_header_t *)curr->next;
-        NODE_READ_UNLOCK(curr);
 
         r->total_keys += num;
         r->total_leaves++;
@@ -41,9 +39,7 @@ collect_stats(bsl_t *list, bsl_inspect_result_t *r)
         node_header_t *curr = level_head(list, lv);
         while (curr)
         {
-            NODE_READ_LOCK(curr);
             node_header_t *next = (node_header_t *)curr->next;
-            NODE_READ_UNLOCK(curr);
             r->total_internals++;
             curr = next;
         }
@@ -70,7 +66,6 @@ bsl_inspect_order(bsl_t *list, bsl_val_t *checksum_out)
 
     while (curr)
     {
-        NODE_READ_LOCK(curr);
         uint32_t       num  = curr->num_elts;
         bsl_key_t     *keys = NODE_KEYS(curr);
         bsl_val_t     *vals = LEAF_VALUES(curr);
@@ -92,7 +87,6 @@ bsl_inspect_order(bsl_t *list, bsl_val_t *checksum_out)
             sum += vals[i];
         }
 
-        NODE_READ_UNLOCK(curr);
         curr = next;
     }
 
@@ -118,7 +112,6 @@ bsl_inspect_index(bsl_t *list)
 
         while (curr)
         {
-            NODE_READ_LOCK(curr);
             uint32_t    num      = curr->num_elts;
             bsl_key_t  *keys     = NODE_KEYS(curr);
             void      **children = INTERNAL_CHILDREN(curr);
@@ -134,9 +127,7 @@ bsl_inspect_index(bsl_t *list)
                     continue;
                 }
 
-                NODE_READ_LOCK(child);
                 bsl_key_t child_hdr = NODE_KEYS(child)[0];
-                NODE_READ_UNLOCK(child);
 
                 if (child_hdr != keys[i])
                 {
@@ -149,7 +140,6 @@ bsl_inspect_index(bsl_t *list)
             }
 
             node_header_t *next = (node_header_t *)curr->next;
-            NODE_READ_UNLOCK(curr);
             curr = next;
         }
     }
@@ -170,10 +160,8 @@ bsl_inspect_levels(bsl_t *list)
         node_header_t *curr = level_head(list, lv);
         while (curr)
         {
-            NODE_READ_LOCK(curr);
             uint32_t       stored_lv = curr->level;
             node_header_t *next      = (node_header_t *)curr->next;
-            NODE_READ_UNLOCK(curr);
 
             if ((int)stored_lv != lv)
             {
@@ -202,16 +190,12 @@ bsl_inspect_next_headers(bsl_t *list)
         node_header_t *curr = level_head(list, lv);
         while (curr)
         {
-            NODE_READ_LOCK(curr);
             bsl_key_t      cached_nh = curr->next_header;
             node_header_t *next      = (node_header_t *)curr->next;
-            NODE_READ_UNLOCK(curr);
 
             if (next)
             {
-                NODE_READ_LOCK(next);
                 bsl_key_t actual_hdr = NODE_KEYS(next)[0];
-                NODE_READ_UNLOCK(next);
 
                 if (cached_nh != actual_hdr)
                 {

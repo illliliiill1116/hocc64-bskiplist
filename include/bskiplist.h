@@ -16,8 +16,8 @@ int bsl_insert(bsl_t *list, bsl_key_t key, bsl_val_t value);
 int bsl_delete(bsl_t *list, bsl_key_t key);
 int bsl_get(bsl_t *list, bsl_key_t key, bsl_val_t *out_val);
 
-typedef void (*range_cb)(bsl_key_t key, bsl_val_t val, void *arg);
-void bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length, range_cb cb, void *arg);
+//typedef void (*range_cb)(bsl_key_t key, bsl_val_t val, void *arg);
+//void bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length, range_cb cb, void *arg);
 
 typedef struct {
     const bsl_key_t *keys;

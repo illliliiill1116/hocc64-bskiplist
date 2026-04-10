@@ -47,11 +47,7 @@ STATIC_ASSERT(NODE_GC_NEXT_OFFSET >= INTERNAL_CHILDREN_OFFSET);
 
 #define NODE_LOAD_VERSION(n)        hocc_load(&((node_header_t *)(n))->ctrl)
 #define NODE_VALIDATE(n, v)         hocc_validate(&((node_header_t *)(n))->ctrl, (v))
-#define NODE_READ_LOCK(n)           hocc_read_lock(&((node_header_t *)(n))->ctrl)
-#define NODE_READ_TRYLOCK(n)        hocc_read_trylock(&((node_header_t *)(n))->ctrl)
-#define NODE_READ_UNLOCK(n)         hocc_read_unlock(&((node_header_t *)(n))->ctrl)
 #define NODE_WRITE_LOCK(n)          hocc_write_lock(&((node_header_t *)(n))->ctrl)
-#define NODE_WRITE_LOCK_EVICTING(n) hocc_write_lock_evicting(&((node_header_t *)(n))->ctrl)
 #define NODE_WRITE_UNLOCK(n)        hocc_write_unlock(&((node_header_t *)(n))->ctrl)
 
 static inline uint32_t

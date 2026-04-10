@@ -167,7 +167,7 @@ top_retry:;
             delete_internal_slot(curr, rank);
 
             NODE_WRITE_LOCK(left_node);
-            NODE_WRITE_LOCK_EVICTING(current);
+            NODE_WRITE_LOCK(current);
 
             if (prev) 
                 NODE_WRITE_UNLOCK(prev);
@@ -220,7 +220,7 @@ top_retry:;
         }
 
         NODE_WRITE_LOCK(left_node);
-        NODE_WRITE_LOCK_EVICTING(current);
+        NODE_WRITE_LOCK(current);
         NODE_WRITE_UNLOCK(old_left);
     }
 
