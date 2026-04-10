@@ -190,7 +190,7 @@ top_retry:;
 
         hocc64_t next_v = NODE_LOAD_VERSION(leaf);
 
-        if (!NODE_VALIDATE(curr, curr_v))
+        if (!NODE_VALIDATE(leaf, curr_v))
         {
             RECORD_RETRY("Leaf: Forward");
             goto top_retry;
