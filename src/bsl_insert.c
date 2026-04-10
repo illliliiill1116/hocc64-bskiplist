@@ -18,6 +18,7 @@
 #include "node.h"
 #include "epoch.h"
 #include "bsl_level.h"
+#include "stats.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -101,11 +102,17 @@ top_retry:;
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
             if (next == NULL)
-                goto top_retry; 
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
             if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr = next;
             curr_v = next_v;
@@ -119,12 +126,18 @@ top_retry:;
         
         /* two-phase HOH validation, see bsl_get.c */
         if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
         
         hocc64_t child_v = NODE_LOAD_VERSION(child); 
 
         if (!NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
 
         curr = child;
         curr_v = child_v;
@@ -134,12 +147,18 @@ top_retry:;
         node_header_t *next = LOAD_RELAXED(curr->next);
 
         if (next == NULL)
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
 
         hocc64_t next_v = NODE_LOAD_VERSION(next);
 
         if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
 
         curr = next;
         curr_v = next_v;
@@ -151,6 +170,7 @@ top_retry:;
     if (!NODE_VALIDATE(curr, curr_v + HOCC_WRITER_BIT))
     {
         NODE_WRITE_UNLOCK(curr);
+        RECORD_RETRY();
         goto top_retry;
     }
 
@@ -178,16 +198,25 @@ top_retry:;
             {
                 node_header_t *next_child = (node_header_t *)INTERNAL_CHILDREN(child)[0];
                 if (next_child == NULL)
+                {
+                    RECORD_RETRY();
                     goto top_retry;
+                }
 
                 /* two-phase HOH validation, see bsl_get.c */
                 if (child_v & HOCC_WRITER_BIT || !NODE_VALIDATE(child, child_v))
+                {
+                    RECORD_RETRY();
                     goto top_retry;
+                }
 
                 hocc64_t next_v = NODE_LOAD_VERSION(next_child);
 
                 if (!NODE_VALIDATE(child, child_v))
+                {
+                    RECORD_RETRY();
                     goto top_retry;
+                }
 
                 child = next_child;
                 child_v = next_v;
@@ -197,6 +226,7 @@ top_retry:;
             if (!NODE_VALIDATE(child, child_v + HOCC_WRITER_BIT))
             {
                 NODE_WRITE_UNLOCK(child);
+                RECORD_RETRY();
                 goto top_retry;
             }
 

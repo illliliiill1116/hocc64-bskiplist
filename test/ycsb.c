@@ -15,6 +15,7 @@
 #include "bskiplist.h"
 #include "bsl_inspect.h"
 #include "node.h"
+#include "stats.h"
 
 
 #define LATENCY_BATCH 10
@@ -190,6 +191,11 @@ static void *worker_func(void *arg)
         }
 #endif
     }
+
+#if STATS
+    bsl_stats_collect();
+#endif
+
     return NULL;
 }
 
@@ -333,6 +339,10 @@ int main(int argc, char **argv)
         printf("\tIteration %d Load: %f ops/us%s\n",
                iter, load_tpt, collect ? "" : "  [warm-up]");
 
+#if STATS
+        bsl_stats_print_report();
+        bsl_stats_cleanup();
+#endif
         /* Run phase */
         start = get_usecs();
         parallel_worker(num_threads, 0, run_wl.size, list, &run_wl,
@@ -348,8 +358,12 @@ int main(int argc, char **argv)
 
         printf("\tIteration %d Run:  %f ops/us%s\n",
                iter, run_tpt, collect ? "" : "  [warm-up]");
+#if STATS
+        bsl_stats_print_report();
+        bsl_stats_cleanup();
+#endif
 
-#ifdef CHECK_STRUCTURE
+#if CHECK_STRUCTURE
         bsl_inspect_all(list, NULL);
 #endif
 

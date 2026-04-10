@@ -17,6 +17,7 @@
 #include "bskiplist.h"
 #include "node.h"
 #include "epoch.h"
+#include "stats.h"
 #include <assert.h>
 #include <string.h>
 
@@ -38,12 +39,19 @@ top_retry:;
         while (LOAD_RELAXED(curr->next_header) <= current_start)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
-            if (!next) break;
+            if (!next)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr = next;
             curr_v = next_v;
@@ -51,18 +59,28 @@ top_retry:;
 
         int rank = find_rank(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
-        if (!child) goto top_retry; 
+        if (!child)
+        {
+            RECORD_RETRY();
+            goto top_retry;
+        }
 
         /* two-phase HOH validation, see bsl_get.c */
         if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
         
         if (level != 1)
         {
             hocc64_t child_v = NODE_LOAD_VERSION(child);
 
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr = child;
             curr_v = child_v;
@@ -73,6 +91,7 @@ top_retry:;
             if (!NODE_VALIDATE(curr, curr_v))
             {
                 NODE_READ_UNLOCK(child);
+                RECORD_RETRY();
                 goto top_retry;
             }
             curr = child;
@@ -108,6 +127,7 @@ top_retry:;
             if (!NODE_READ_TRYLOCK(&next->header))
             {
                 NODE_READ_UNLOCK(&leaf->header);
+                RECORD_RETRY();
                 goto top_retry;
             }
 
@@ -149,6 +169,7 @@ top_retry:;
         if (unlikely(!NODE_READ_TRYLOCK(&next->header)))
         {
             NODE_READ_UNLOCK(&leaf->header);
+            RECORD_RETRY();
             goto top_retry;
         }
 
@@ -183,12 +204,19 @@ top_retry:;
         while (LOAD_RELAXED(curr->next_header) <= current_start)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
-            if (!next) break;
+            if (!next)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr = next;
             curr_v = next_v;
@@ -196,18 +224,28 @@ top_retry:;
 
         int rank = find_rank(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
-        if (!child) goto top_retry; 
+        if (!child)
+        {
+            RECORD_RETRY();
+            goto top_retry;
+        }
 
         /* two-phase HOH validation, see bsl_get.c */
         if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
         
         if (level != 1)
         {
             hocc64_t child_v = NODE_LOAD_VERSION(child);
 
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr = child;
             curr_v = child_v;
@@ -218,6 +256,7 @@ top_retry:;
             if (!NODE_VALIDATE(curr, curr_v))
             {
                 NODE_READ_UNLOCK(child);
+                RECORD_RETRY();
                 goto top_retry;
             }
             curr = child;
@@ -253,6 +292,7 @@ top_retry:;
             if (!NODE_READ_TRYLOCK(&next->header))
             {
                 NODE_READ_UNLOCK(&leaf->header);
+                RECORD_RETRY();
                 goto top_retry;
             }
 
@@ -295,6 +335,7 @@ top_retry:;
         if (unlikely(!NODE_READ_TRYLOCK(&next->header)))
         {
             NODE_READ_UNLOCK(&leaf->header);
+            RECORD_RETRY();
             goto top_retry;
         }
 

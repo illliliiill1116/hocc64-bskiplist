@@ -10,6 +10,7 @@
 #include "bskiplist.h"
 #include "node.h"
 #include "epoch.h"
+#include "stats.h"
 #include <assert.h>
 
 static inline int
@@ -28,7 +29,11 @@ top_retry:;
         while (LOAD_RELAXED(curr->next_header) <= key)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
-            if (!next) goto top_retry;
+            if (!next)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
 
             /*
              * next is atomically read and always points to an existing node,
@@ -37,13 +42,20 @@ top_retry:;
              */
             hocc64_t next_v = NODE_LOAD_VERSION(next);
             if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr   = next;
             curr_v = next_v;
         }
 
-        if (curr_v & HOCC_WRITER_BIT) goto top_retry;
+        if (curr_v & HOCC_WRITER_BIT)
+        {
+            RECORD_RETRY();
+            goto top_retry;
+        }
 
         int        num  = LOAD_RELAXED(curr->num_elts);
         bsl_key_t *keys = NODE_KEYS(curr);
@@ -57,7 +69,10 @@ top_retry:;
 
                  __atomic_thread_fence(__ATOMIC_ACQUIRE); /* for arm arch, no effect on x86 */
                 if (!NODE_VALIDATE(curr, curr_v))
+                {
+                    RECORD_RETRY();
                     goto top_retry;
+                }
 
                 if (out_val) *out_val = v;
                 
@@ -67,7 +82,10 @@ top_retry:;
             /* Prevent keys[rank] load from being reordered after NODE_VALIDATE */
             __atomic_thread_fence(__ATOMIC_ACQUIRE);  /* for arm arch, no effect on x86 */
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
             
             return 0;
         }
@@ -75,7 +93,11 @@ top_retry:;
         {
             void          **children = INTERNAL_CHILDREN(curr);
             node_header_t  *child    = (node_header_t *)LOAD_RELAXED(children[rank]);
-            if (!child) goto top_retry;
+            if (!child)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            } 
 
             /*
              * Two-phase validation for optimistic HOH traversal.
@@ -92,10 +114,16 @@ top_retry:;
              */
             {
                 if (!NODE_VALIDATE(curr, curr_v)) /* Phase 1 */
+                {
+                    RECORD_RETRY();
                     goto top_retry;
+                }
                 hocc64_t child_v = NODE_LOAD_VERSION(child);
                 if (!NODE_VALIDATE(curr, curr_v)) /* Phase 2 */
+                {
+                    RECORD_RETRY();
                     goto top_retry;
+                }
                 curr   = child;
                 curr_v = child_v;
             }
