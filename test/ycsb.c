@@ -15,6 +15,7 @@
 #include "bskiplist.h"
 #include "bsl_inspect.h"
 #include "node.h"
+#include "stats.h"
 
 
 #define LATENCY_BATCH 10
@@ -192,6 +193,11 @@ static void *worker_func(void *arg)
         }
 #endif
     }
+
+#if STATS
+    bsl_stats_collect();
+#endif
+
     return NULL;
 }
 
@@ -353,6 +359,11 @@ int main(int argc, char **argv)
 
 #ifdef CHECK_STRUCTURE
         bsl_inspect_all(list, NULL);
+#endif
+
+#if STATS
+        bsl_stats_print_report();
+        bsl_stats_cleanup();
 #endif
 
         bsl_destroy(list);

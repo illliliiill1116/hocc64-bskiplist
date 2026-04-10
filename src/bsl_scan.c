@@ -17,6 +17,7 @@
 #include "bskiplist.h"
 #include "node.h"
 #include "epoch.h"
+#include "stats.h"
 #include <assert.h>
 #include <string.h>
 
@@ -38,12 +39,19 @@ top_retry:;
         while (LOAD_RELAXED(curr->next_header) <= current_start)
         {
             node_header_t *next = LOAD_RELAXED(curr->next);
-            if (!next) break;
+            if (!next)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             curr = next;
             curr_v = next_v;
@@ -51,16 +59,26 @@ top_retry:;
 
         int rank = find_rank(NODE_KEYS(curr), LOAD_RELAXED(curr->num_elts), current_start);
         node_header_t *child = LOAD_RELAXED(INTERNAL_CHILDREN(curr)[rank]);
-        if (!child) goto top_retry; 
+        if (!child)
+        {
+            RECORD_RETRY();
+            goto top_retry; 
+        }
 
         /* two-phase HOH validation, see bsl_get.c */
         if (curr_v & HOCC_WRITER_BIT || !NODE_VALIDATE(curr, curr_v))
-            goto top_retry;
+        {
+            RECORD_RETRY();
+            goto top_retry; 
+        }
         
         hocc64_t child_v = NODE_LOAD_VERSION(child);
 
         if (!NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
 
         curr = child;
         curr_v = child_v;
@@ -69,12 +87,19 @@ top_retry:;
     while (LOAD_RELAXED(curr->next_header) <= current_start)
     {
         node_header_t *next = LOAD_RELAXED(curr->next);
-        if (!next) break;
+        if (!next)
+        {
+            RECORD_RETRY();
+            goto top_retry;
+        }
 
         hocc64_t next_v = NODE_LOAD_VERSION(next);
 
         if (!NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY();
             goto top_retry;
+        }
 
         curr = next;
         curr_v = next_v;
@@ -92,16 +117,21 @@ top_retry:;
         {
             leaf_node_t *next = (leaf_node_t *)LOAD_RELAXED(leaf->header.next);
             if (leaf->header.next_header == BSL_KEY_MAX)
-            {
                 return;
-            }
             
-            if (!next) goto top_retry;
+            if (!next)
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
             if (!NODE_VALIDATE(curr, curr_v))
+            {
+                RECORD_RETRY();
                 goto top_retry;
+            }
 
             rank = 0;
             leaf = next;
@@ -136,7 +166,10 @@ top_retry:;
             }
 
             if (!NODE_VALIDATE(leaf, curr_v))
+            {
+                RECORD_RETRY("Leaf: diff version after summing");
                 goto top_retry;
+            }
 
             *sum_ptr += local_sum;   
                    
@@ -149,12 +182,19 @@ top_retry:;
         {
             break;
         }
-        if (!next) goto top_retry;
+        if (!next)
+        {
+            RECORD_RETRY();
+            goto top_retry;
+        }
 
         hocc64_t next_v = NODE_LOAD_VERSION(leaf);
 
         if (!NODE_VALIDATE(curr, curr_v))
+        {
+            RECORD_RETRY("Leaf: Forward");
             goto top_retry;
+        }
 
         rank = 0;
         leaf = next;
