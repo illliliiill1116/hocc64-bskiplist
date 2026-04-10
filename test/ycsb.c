@@ -341,6 +341,11 @@ int main(int argc, char **argv)
         printf("\tIteration %d Load: %f ops/us%s\n",
                iter, load_tpt, collect ? "" : "  [warm-up]");
 
+#if STATS
+        bsl_stats_print_report();
+        bsl_stats_cleanup();
+#endif
+
         /* Run phase */
         start = get_usecs();
         parallel_worker(num_threads, 0, run_wl.size, list, &run_wl,
@@ -357,14 +362,15 @@ int main(int argc, char **argv)
         printf("\tIteration %d Run:  %f ops/us%s\n",
                iter, run_tpt, collect ? "" : "  [warm-up]");
 
-#ifdef CHECK_STRUCTURE
-        bsl_inspect_all(list, NULL);
-#endif
-
 #if STATS
         bsl_stats_print_report();
         bsl_stats_cleanup();
 #endif
+
+#if CHECK_STRUCTURE
+        bsl_inspect_all(list, NULL);
+#endif
+
 
         bsl_destroy(list);
     }
