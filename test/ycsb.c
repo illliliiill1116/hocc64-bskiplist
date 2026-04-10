@@ -126,6 +126,7 @@ static double find_median(double *arr, int n)
     return arr[n / 2];
 }
 
+/*
 static void scan_cb(bsl_range_t range, void *arg)
 {
     uint64_t *sum_ptr = (uint64_t *)arg;
@@ -138,6 +139,7 @@ static void scan_cb(bsl_range_t range, void *arg)
     }
     *sum_ptr = local_sum;
 }
+*/
 
 static void *worker_func(void *arg)
 {
@@ -173,8 +175,8 @@ static void *worker_func(void *arg)
             {
                 uint64_t sum = 0;
                 bsl_scan_n_batch(a->list, a->keys[i],
-                                     (size_t)a->ranges_val[i],
-                                     scan_cb, &sum);
+                                    (size_t)a->ranges_val[i],
+                                    &sum);
                 break;
             }
             default: abort();

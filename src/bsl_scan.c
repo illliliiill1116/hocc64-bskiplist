@@ -21,7 +21,7 @@
 #include <string.h>
 
 static inline void 
-_bsl_scan_n_batch_optimistic(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg)
+_bsl_scan_n_batch_optimistic(bsl_t *list, bsl_key_t start, size_t length, void *arg)
 {
     if (unlikely(length <= 0)) return;
 
@@ -125,9 +125,22 @@ top_retry:;
                 .count = batch_size
             };
             
-            cb(range, arg);
+            //cb(range, arg);
+            uint64_t *sum_ptr = (uint64_t *)arg;
+
+            uint64_t local_sum = 0;
+            for (size_t i = 0; i < range.count; i++)
+            {
+                local_sum += range.keys[i];
+                local_sum += range.vals[i];
+            }
+
+            if (!NODE_VALIDATE(leaf, curr_v))
+                goto top_retry;
+
+            *sum_ptr += local_sum;   
+                   
             remaining -= batch_size;
-            
             current_start = LOAD_RELAXED(leaf->keys[rank + batch_size - 1]) + 1;
         }
 
@@ -149,9 +162,9 @@ top_retry:;
     }
 }
 
-void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg)
+void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, void *arg)
 {
     epoch_enter();
-    _bsl_scan_n_batch_optimistic(list, start, length, cb, arg);
+    _bsl_scan_n_batch_optimistic(list, start, length, arg);
     epoch_exit();
 }

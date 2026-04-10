@@ -27,6 +27,6 @@ typedef struct {
 
 typedef void (*range_batch_cb)(bsl_range_t range, void *arg);
 
-void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg);
+void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, void *arg);
 
 #endif /* BSKIPLIST_H */
