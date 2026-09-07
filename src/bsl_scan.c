@@ -107,6 +107,12 @@ top_retry:;
 
     leaf_node_t *leaf = (leaf_node_t *)curr;
 
+    if (curr_v & HOCC_WRITER_BIT)
+    {
+        RECORD_RETRY("Leaf: writer active on entry");
+        goto top_retry;
+    }
+
     int num_elts = LOAD_RELAXED(leaf->header.num_elts);
     int rank = find_rank(leaf->keys, num_elts, current_start);
 
@@ -115,10 +121,18 @@ top_retry:;
         rank++;
         if (rank == num_elts)
         {
-            leaf_node_t *next = (leaf_node_t *)LOAD_RELAXED(leaf->header.next);
-            if (leaf->header.next_header == BSL_KEY_MAX)
+            bsl_key_t next_header = LOAD_RELAXED(leaf->header.next_header);
+            leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
+
+            if (!NODE_VALIDATE(leaf, curr_v))
+            {
+                RECORD_RETRY();
+                goto top_retry;
+            }
+
+            if (next_header == BSL_KEY_MAX)
                 return;
-            
+
             if (!next)
             {
                 RECORD_RETRY();
@@ -127,7 +141,7 @@ top_retry:;
 
             hocc64_t next_v = NODE_LOAD_VERSION(next);
 
-            if (!NODE_VALIDATE(curr, curr_v))
+            if (!NODE_VALIDATE(leaf, curr_v))
             {
                 RECORD_RETRY();
                 goto top_retry;
@@ -141,9 +155,21 @@ top_retry:;
 
     while (remaining)
     {
+        if (curr_v & HOCC_WRITER_BIT)
+        {
+            RECORD_RETRY("Leaf: writer active");
+            goto top_retry;
+        }
+
         int num = LOAD_RELAXED(leaf->header.num_elts);
 
-        size_t batch_size = num - rank;
+        if (rank > num)
+        {
+            RECORD_RETRY("Leaf: stale rank");
+            goto top_retry;
+        }
+
+        size_t batch_size = (size_t)(num - rank);
         if (remaining < batch_size)
             batch_size = remaining;
 
@@ -165,6 +191,8 @@ top_retry:;
                 local_sum += range.vals[i];
             }
 
+            bsl_key_t last_key = range.keys[batch_size - 1];
+
             if (!NODE_VALIDATE(leaf, curr_v))
             {
                 RECORD_RETRY("Leaf: diff version after summing");
@@ -174,14 +202,28 @@ top_retry:;
             *sum_ptr += local_sum;   
                    
             remaining -= batch_size;
-            current_start = LOAD_RELAXED(leaf->keys[rank + batch_size - 1]) + 1;
+            current_start = last_key + 1;
         }
 
-        leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
-        if (leaf->header.next_header == BSL_KEY_MAX || remaining == 0)
+        if (remaining == 0)
         {
             break;
         }
+
+        bsl_key_t next_header = LOAD_RELAXED(leaf->header.next_header);
+        leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
+
+        if (!NODE_VALIDATE(leaf, curr_v))
+        {
+            RECORD_RETRY("Leaf: Forward");
+            goto top_retry;
+        }
+
+        if (next_header == BSL_KEY_MAX)
+        {
+            break;
+        }
+
         if (!next)
         {
             RECORD_RETRY();
