@@ -31,7 +31,8 @@ typedef enum
     OP_UPDATE,
     OP_READ,
     OP_SCAN,
-    OP_SCAN_END
+    OP_SCAN_END,
+    OP_DELETE
 } op_t;
 
 typedef struct
@@ -80,6 +81,9 @@ void load_workload(const char *filename, workload_t *wl, int max_iters)
         } else if (*ptr == 'S') { // SCAN
             wl->ops[wl->size] = OP_SCAN;
             ptr += 4; // skip "SCAN"
+        } else if (*ptr == 'D') { // DELETE
+            wl->ops[wl->size] = OP_DELETE;
+            ptr += 6; // skip "DELETE"
         }
 
         char *next_ptr;
@@ -180,6 +184,9 @@ static void *worker_func(void *arg)
                                     &sum);
                 break;
             }
+            case OP_DELETE:
+                bsl_delete(a->list, (bsl_key_t)a->keys[i]);
+                break;
             default: abort();
         }
 
