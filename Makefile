@@ -17,11 +17,12 @@ MEASURE_LATENCY ?= 0
 ASAN			?= 0
 STATS			?= 1
 CHECK_STRUCTURE ?= 0
+OPT             ?= 3
 
 ifeq ($(DEBUG),1)
     CFLAGS += -O0 -g -DDEBUG
 else
-    CFLAGS += -O3 -DNDEBUG -march=native
+    CFLAGS += -O$(OPT) -DNDEBUG -march=native
 endif
 
 ifeq ($(MEASURE_LATENCY),1)
