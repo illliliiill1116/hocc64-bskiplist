@@ -12,19 +12,11 @@ typedef struct {
     size_t    count;
 } scan_result_t;
 
-static void scan_cb(bsl_key_t key, bsl_val_t val, void *arg) {
-    scan_result_t *r = (scan_result_t *)arg;
-    if (r->count < SCAN_BUF_SIZE) {
-        r->keys[r->count] = key;
-        r->vals[r->count] = val;
-        r->count++;
-    }
-}
-
 static size_t bsl_scan_collect(bsl_t *list, bsl_key_t start, size_t length,
                                 scan_result_t *out) {
-    out->count = 0;
-    bsl_scan_n(list, start, length, scan_cb, out);
+    if (length > SCAN_BUF_SIZE) length = SCAN_BUF_SIZE;
+    out->count = bsl_scan_n(list, start, length, out->keys, out->vals,
+                            SCAN_BUF_SIZE);
     return out->count;
 }
 */

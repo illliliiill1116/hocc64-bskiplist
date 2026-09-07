@@ -274,6 +274,7 @@ func TestLinearizabilitySuites(t *testing.T) {
 				m.Destroy()
 
 				res, _ := porcupine.CheckOperationsVerbose(bslModel, ops, 20*time.Second)
+				t.Logf("[%s] Round %d: verdict=%v ops=%d", tc.name, round, res, len(ops))
 				if res == porcupine.Illegal {
 					t.Errorf("[%s] Round %d: FAILED LINEARIZABILITY", tc.name, round)
 					return

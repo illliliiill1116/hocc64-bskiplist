@@ -21,10 +21,16 @@
 #include <assert.h>
 #include <string.h>
 
-static inline void 
-_bsl_scan_n_batch_optimistic(bsl_t *list, bsl_key_t start, size_t length, void *arg)
+typedef struct {
+    bsl_key_t *keys;
+    bsl_val_t *vals;
+} scan_out_t;
+
+static inline size_t
+_bsl_scan_n_batch_optimistic(bsl_t *list, bsl_key_t start, size_t length, void *arg,
+                             const scan_out_t *out)
 {
-    if (unlikely(length <= 0)) return;
+    if (unlikely(length <= 0)) return 0;
 
     size_t remaining = length;
     bsl_key_t current_start = start;
@@ -131,7 +137,7 @@ top_retry:;
             }
 
             if (next_header == BSL_KEY_MAX)
-                return;
+                return 0;
 
             if (!next)
             {
@@ -181,14 +187,23 @@ top_retry:;
                 .count = batch_size
             };
             
-            //cb(range, arg);
-            uint64_t *sum_ptr = (uint64_t *)arg;
-
             uint64_t local_sum = 0;
-            for (size_t i = 0; i < range.count; i++)
+            size_t offset = length - remaining;
+
+            if (out)
             {
-                local_sum += range.keys[i];
-                local_sum += range.vals[i];
+                memcpy(out->keys + offset, range.keys,
+                       batch_size * sizeof(bsl_key_t));
+                memcpy(out->vals + offset, range.vals,
+                       batch_size * sizeof(bsl_val_t));
+            }
+            else
+            {
+                for (size_t i = 0; i < range.count; i++)
+                {
+                    local_sum += range.keys[i];
+                    local_sum += range.vals[i];
+                }
             }
 
             bsl_key_t last_key = range.keys[batch_size - 1];
@@ -199,8 +214,9 @@ top_retry:;
                 goto top_retry;
             }
 
-            *sum_ptr += local_sum;   
-                   
+            if (!out)
+                *(uint64_t *)arg += local_sum;
+
             remaining -= batch_size;
             current_start = last_key + 1;
         }
@@ -242,11 +258,27 @@ top_retry:;
         leaf = next;
         curr_v = next_v;
     }
+
+    return length - remaining;
 }
 
 void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, void *arg)
 {
     epoch_enter();
-    _bsl_scan_n_batch_optimistic(list, start, length, arg);
+    _bsl_scan_n_batch_optimistic(list, start, length, arg, NULL);
     epoch_exit();
+}
+
+size_t bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length,
+                  bsl_key_t *out_keys, bsl_val_t *out_vals, size_t capacity)
+{
+    if (unlikely(!out_keys || !out_vals)) return 0;
+    if (length > capacity) length = capacity;
+
+    scan_out_t out = { out_keys, out_vals };
+
+    epoch_enter();
+    size_t n = _bsl_scan_n_batch_optimistic(list, start, length, NULL, &out);
+    epoch_exit();
+    return n;
 }
