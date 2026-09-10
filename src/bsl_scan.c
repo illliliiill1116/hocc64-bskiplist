@@ -20,22 +20,20 @@
 #include "stats.h"
 #include <assert.h>
 #include <string.h>
-
-typedef struct {
-    bsl_key_t *keys;
-    bsl_val_t *vals;
-} scan_out_t;
+#include <stdio.h>
 
 static inline size_t
-_bsl_scan_n_batch_optimistic(bsl_t *list, bsl_key_t start, size_t length, void *arg,
-                             const scan_out_t *out)
+_bsl_scan_n_batch_optimistic(bsl_t *list, bsl_key_t start, size_t length, range_batch_cb cb, void *arg)
 {
     if (unlikely(length <= 0)) return 0;
 
-    size_t remaining = length;
-    bsl_key_t current_start = start;
+    size_t remaining;
+    bsl_key_t current_start;
 
-top_retry:;
+top_retry:
+
+    remaining = length;
+    current_start = start;
 
     node_header_t *curr = list->headers[MAX_LEVEL - 1];
     hocc64_t curr_v = NODE_LOAD_VERSION(curr);
@@ -113,69 +111,58 @@ top_retry:;
 
     leaf_node_t *leaf = (leaf_node_t *)curr;
 
-    if (curr_v & HOCC_WRITER_BIT)
-    {
-        RECORD_RETRY("Leaf: writer active on entry");
-        goto top_retry;
-    }
-
     int num_elts = LOAD_RELAXED(leaf->header.num_elts);
     int rank = find_rank(leaf->keys, num_elts, current_start);
 
-    if (LOAD_RELAXED(leaf->keys[rank]) != current_start || (current_start == BSL_KEY_MIN && leaf == list->headers[0]))
-    {
+    if (!NODE_VALIDATE(leaf, curr_v) || (curr_v & HOCC_WRITER_BIT)) {
+        RECORD_RETRY("Leaf changed after rank");
+        goto top_retry;
+    }
+
+    if (LOAD_RELAXED(leaf->keys[rank]) != current_start ||
+        (current_start == BSL_KEY_MIN && leaf == (leaf_node_t *)list->headers[0]))
         rank++;
-        if (rank == num_elts)
-        {
-            bsl_key_t next_header = LOAD_RELAXED(leaf->header.next_header);
-            leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
 
-            if (!NODE_VALIDATE(leaf, curr_v))
-            {
-                RECORD_RETRY();
-                goto top_retry;
-            }
+    // if rank points past this leaf, move to next leaf
+    if (rank >= num_elts)
+    {
+        leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
 
-            if (next_header == BSL_KEY_MAX)
-                return 0;
+        if (leaf->header.next_header == BSL_KEY_MAX)
+            return length - remaining;
 
-            if (!next)
-            {
-                RECORD_RETRY();
-                goto top_retry;
-            }
-
-            hocc64_t next_v = NODE_LOAD_VERSION(next);
-
-            if (!NODE_VALIDATE(leaf, curr_v))
-            {
-                RECORD_RETRY();
-                goto top_retry;
-            }
-
-            rank = 0;
-            leaf = next;
-            curr_v = next_v;
+        if (!next) {
+            RECORD_RETRY();
+            goto top_retry;
         }
+
+        hocc64_t next_v = NODE_LOAD_VERSION(next);
+
+        if (!NODE_VALIDATE(leaf, curr_v) || (curr_v & HOCC_WRITER_BIT)) {
+            RECORD_RETRY("Leaf changed before moving next");
+            goto top_retry;
+        }
+
+        leaf = next;
+        curr_v = next_v;
+        rank = 0;
     }
 
     while (remaining)
     {
-        if (curr_v & HOCC_WRITER_BIT)
-        {
-            RECORD_RETRY("Leaf: writer active");
-            goto top_retry;
-        }
-
         int num = LOAD_RELAXED(leaf->header.num_elts);
 
-        if (rank > num)
-        {
-            RECORD_RETRY("Leaf: stale rank");
+        if (rank < 0 || rank > num) {
+            RECORD_RETRY("Invalid rank in leaf");
             goto top_retry;
         }
 
-        size_t batch_size = (size_t)(num - rank);
+        if (!NODE_VALIDATE(leaf, curr_v) || (curr_v & HOCC_WRITER_BIT)) {
+            RECORD_RETRY("Leaf changed before batch");
+            goto top_retry;
+        }
+
+        size_t batch_size = num - rank;
         if (remaining < batch_size)
             batch_size = remaining;
 
@@ -184,64 +171,41 @@ top_retry:;
             bsl_range_t range = {
                 .keys = &leaf->keys[rank],
                 .vals = &leaf->values[rank],
-                .count = batch_size
+                .count = batch_size,
+                .offset = length - remaining
             };
-            
-            uint64_t local_sum = 0;
-            size_t offset = length - remaining;
 
-            if (out)
-            {
-                memcpy(out->keys + offset, range.keys,
-                       batch_size * sizeof(bsl_key_t));
-                memcpy(out->vals + offset, range.vals,
-                       batch_size * sizeof(bsl_val_t));
-            }
-            else
-            {
-                for (size_t i = 0; i < range.count; i++)
-                {
-                    local_sum += range.keys[i];
-                    local_sum += range.vals[i];
-                }
-            }
-
-            bsl_key_t last_key = range.keys[batch_size - 1];
+            cb(range, arg);
 
             if (!NODE_VALIDATE(leaf, curr_v))
             {
                 RECORD_RETRY("Leaf: diff version after summing");
                 goto top_retry;
             }
-
-            if (!out)
-                *(uint64_t *)arg += local_sum;
-
+      
             remaining -= batch_size;
-            current_start = last_key + 1;
+            // current_start = last_key + 1;
         }
 
-        if (remaining == 0)
-        {
+        // leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
+        
+        if (remaining == 0) {
             break;
         }
 
         bsl_key_t next_header = LOAD_RELAXED(leaf->header.next_header);
         leaf_node_t *next = (leaf_node_t *)LOAD_ACQUIRE(leaf->header.next);
 
-        if (!NODE_VALIDATE(leaf, curr_v))
-        {
-            RECORD_RETRY("Leaf: Forward");
+        if (!NODE_VALIDATE(leaf, curr_v)) {
+            RECORD_RETRY("Leaf changed before forward");
             goto top_retry;
         }
 
-        if (next_header == BSL_KEY_MAX)
-        {
+        if (next_header == BSL_KEY_MAX) {
             break;
         }
 
-        if (!next)
-        {
+        if (!next) {
             RECORD_RETRY();
             goto top_retry;
         }
@@ -262,11 +226,41 @@ top_retry:;
     return length - remaining;
 }
 
-void bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length, void *arg)
+size_t bsl_scan_n_batch(bsl_t *list, bsl_key_t start, size_t length,
+                        range_batch_cb cb, void *arg)
 {
+    if (unlikely(!cb)) return 0;
+
     epoch_enter();
-    _bsl_scan_n_batch_optimistic(list, start, length, arg, NULL);
+    size_t n = _bsl_scan_n_batch_optimistic(list, start, length, cb, arg);
     epoch_exit();
+    return n;
+}
+
+/*
+ * Copy-out entry point, layered on the callback scan above so that there is
+ * only one traversal to maintain. The collector is offset-addressed, which is
+ * what makes it correct under a retry: the scan restarts from `start`, so a
+ * batch may be delivered more than once, and writing at range.offset
+ * overwrites the earlier delivery instead of appending after it.
+ */
+typedef struct {
+    bsl_key_t *keys;
+    bsl_val_t *vals;
+    size_t     capacity;
+} scan_collect_t;
+
+static void
+_scan_collect_cb(bsl_range_t range, void *arg)
+{
+    scan_collect_t *out = (scan_collect_t *)arg;
+
+    if (unlikely(range.offset + range.count > out->capacity)) return;
+
+    memcpy(out->keys + range.offset, range.keys,
+           range.count * sizeof(bsl_key_t));
+    memcpy(out->vals + range.offset, range.vals,
+           range.count * sizeof(bsl_val_t));
 }
 
 size_t bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length,
@@ -275,10 +269,7 @@ size_t bsl_scan_n(bsl_t *list, bsl_key_t start, size_t length,
     if (unlikely(!out_keys || !out_vals)) return 0;
     if (length > capacity) length = capacity;
 
-    scan_out_t out = { out_keys, out_vals };
+    scan_collect_t out = { out_keys, out_vals, capacity };
 
-    epoch_enter();
-    size_t n = _bsl_scan_n_batch_optimistic(list, start, length, NULL, &out);
-    epoch_exit();
-    return n;
+    return bsl_scan_n_batch(list, start, length, _scan_collect_cb, &out);
 }

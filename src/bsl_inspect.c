@@ -236,7 +236,7 @@ bsl_inspect_all(bsl_t *list, bsl_inspect_result_t *out)
     printf("  Index        : %s\n", local.index_ok       ? "PASS" : "FAIL");
     printf("  Levels       : %s\n", local.level_ok       ? "PASS" : "FAIL");
     printf("  Next-headers : %s\n", local.next_header_ok ? "PASS" : "FAIL");
-    printf("  Leaf nodes   : %llu  Internal: %llu  Keys: %llu  Avg fill: %.1f%%\n",
+    printf("  Leaf nodes   : %lu  Internal: %lu  Keys: %lu  Avg fill: %.1f%%\n",
            local.total_leaves, local.total_internals,
            local.total_keys, local.avg_leaf_fill * 100.0);
     printf("\n  --- Leaf Fill Distribution ---\n");
