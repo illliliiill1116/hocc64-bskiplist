@@ -9,6 +9,10 @@
     extern const char* point_to_note[MAX_RETRY_POINTS];
 
     extern __thread uint64_t local_retry_counts[MAX_RETRY_POINTS];
+    /* All retry events of this thread, so a caller can tell whether one
+     * operation retried: compare it before and after the call. */
+    extern __thread uint64_t local_retry_events;
+    extern __thread uint64_t local_retried_ops;
     #define RECORD_RETRY(...) _RECORD_RETRY_INTERNAL("" __VA_ARGS__)
 
     #define _RECORD_RETRY_INTERNAL(note) do {          \
@@ -27,6 +31,7 @@
         }                                              \
         if (likely(__retry_idx < MAX_RETRY_POINTS))    \
             local_retry_counts[__retry_idx]++;         \
+        local_retry_events++;                          \
     } while (0)
 
     void bsl_stats_collect();

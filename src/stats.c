@@ -12,6 +12,9 @@ const char* point_to_note[MAX_RETRY_POINTS] = {NULL};
 uint64_t global_final_counts[MAX_RETRY_POINTS] = {0};
 
 __thread uint64_t local_retry_counts[MAX_RETRY_POINTS] = {0};
+__thread uint64_t local_retry_events = 0;
+__thread uint64_t local_retried_ops = 0;
+static uint64_t global_retried_ops = 0;
 
 static pthread_mutex_t stats_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -23,6 +26,8 @@ void bsl_stats_collect()
         global_final_counts[i] += local_retry_counts[i];
         local_retry_counts[i] = 0;
     }
+    global_retried_ops += local_retried_ops;
+    local_retried_ops = 0;
     pthread_mutex_unlock(&stats_mutex);
 }
 
@@ -32,6 +37,7 @@ void bsl_stats_cleanup()
     
     for (int i = 0; i < MAX_RETRY_POINTS; i++)
         global_final_counts[i] = 0;
+    global_retried_ops = 0;
 
     pthread_mutex_unlock(&stats_mutex);
 }
@@ -93,6 +99,7 @@ void bsl_stats_print_report()
 
     printf("--------------------------------------------------------------------------------\n");
     printf("Total Retries: %llu\n", (unsigned long long)total_retries);
+    printf("Retried Ops: %llu\n", (unsigned long long)global_retried_ops);
     printf("================================================================================\n\n");
 }
 

@@ -164,6 +164,9 @@ static void *worker_func(void *arg)
 
     for (int i = a->start; i < a->end; i++)
     {
+#if STATS
+        uint64_t events_before = local_retry_events;
+#endif
         switch (a->ops[i])
         {
             case OP_INSERT:
@@ -189,6 +192,10 @@ static void *worker_func(void *arg)
                 break;
             default: abort();
         }
+#if STATS
+        if (local_retry_events != events_before)
+            local_retried_ops++;
+#endif
 
 #if MEASURE_LATENCY
         if (a->collect_stats && (i - a->start + 1) % LATENCY_BATCH == 0)
